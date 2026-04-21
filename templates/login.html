@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZXTCOZY — Secure Access</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --cyan: #00e5ff;
+            --violet: #7c3aed;
+            --pink: #f472b6;
+            --dark: #020617;
+            --card: rgba(8, 14, 35, 0.85);
+            --border: rgba(0, 229, 255, 0.15);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--dark);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* ── CANVAS BACKGROUND ── */
+        #bg-canvas {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+        }
+
+        /* ── FLOATING ORBS ── */
+        .orb {
+            position: fixed;
+            border-radius: 50%;
+            filter: blur(80px);
+            animation: drift linear infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .orb-1 { width: 500px; height: 500px; background: rgba(124,58,237,0.25); top: -100px; left: -100px; animation-duration: 20s; }
+        .orb-2 { width: 400px; height: 400px; background: rgba(0,229,255,0.2); bottom: -80px; right: -80px; animation-duration: 25s; animation-direction: reverse; }
+        .orb-3 { width: 300px; height: 300px; background: rgba(244,114,182,0.15); top: 50%; left: 50%; animation-duration: 18s; }
+
+        @keyframes drift {
+            0%   { transform: translate(0, 0) scale(1); }
+            33%  { transform: translate(60px, 40px) scale(1.05); }
+            66%  { transform: translate(-30px, 70px) scale(0.95); }
+            100% { transform: translate(0, 0) scale(1); }
+        }
+
+        /* ── GRID OVERLAY ── */
+        .grid-overlay {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            background-image:
+                linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            animation: gridPulse 8s ease-in-out infinite;
+        }
+        @keyframes gridPulse {
+            0%, 100% { opacity: 0.4; }
+            50% { opacity: 0.8; }
+        }
+
+        /* ── FLOATING PARTICLES ── */
+        .particle-field { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+        .spark {
+            position: absolute;
+            border-radius: 50%;
+            animation: floatUp linear infinite;
+        }
+        @keyframes floatUp {
+            0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+            10%  { opacity: 1; }
+            90%  { opacity: 0.6; }
+            100% { transform: translateY(-10vh) scale(1.5) rotate(360deg); opacity: 0; }
+        }
+
+        /* ── MAIN WRAPPER ── */
+        .wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 460px;
+            padding: 24px;
+            animation: cardEntrance 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes cardEntrance {
+            from { opacity: 0; transform: translateY(60px) scale(0.95); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        /* ── CARD ── */
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 28px;
+            padding: 52px 44px;
+            backdrop-filter: blur(32px);
+            position: relative;
+            overflow: hidden;
+            box-shadow:
+                0 0 0 1px rgba(0,229,255,0.05),
+                0 30px 80px rgba(0,0,0,0.6),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+        }
+
+        /* card top glow bar */
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 10%; right: 10%;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--cyan), var(--violet), transparent);
+            animation: topGlow 3s ease-in-out infinite;
+        }
+        @keyframes topGlow {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; box-shadow: 0 0 20px var(--cyan); }
+        }
+
+        /* card corner decorations */
+        .card::after {
+            content: '';
+            position: absolute;
+            bottom: -60px; right: -60px;
+            width: 200px; height: 200px;
+            background: radial-gradient(circle, rgba(124,58,237,0.15) 0%, transparent 70%);
+            border-radius: 50%;
+        }
+
+        /* ── LOGO SECTION ── */
+        .logo-wrap {
+            text-align: center;
+            margin-bottom: 44px;
+        }
+
+        .logo-icon-wrap {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 80px; height: 80px;
+            border-radius: 24px;
+            background: linear-gradient(135deg, rgba(124,58,237,0.3), rgba(0,229,255,0.2));
+            border: 1px solid rgba(0,229,255,0.2);
+            margin-bottom: 20px;
+            position: relative;
+            animation: iconFloat 4s ease-in-out infinite;
+        }
+        @keyframes iconFloat {
+            0%, 100% { transform: translateY(0); box-shadow: 0 10px 30px rgba(124,58,237,0.3); }
+            50% { transform: translateY(-8px); box-shadow: 0 20px 50px rgba(0,229,255,0.4); }
+        }
+        .logo-icon-wrap i {
+            font-size: 36px;
+            background: linear-gradient(135deg, var(--cyan), var(--violet));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* pulse ring */
+        .logo-icon-wrap::after {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: 28px;
+            border: 1px solid rgba(0,229,255,0.3);
+            animation: ringPulse 2s ease-in-out infinite;
+        }
+        @keyframes ringPulse {
+            0%, 100% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+
+        .brand-name {
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #fff 30%, var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 6px;
+        }
+
+        .brand-tag {
+            font-size: 12px;
+            font-weight: 500;
+            color: rgba(255,255,255,0.4);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+
+        /* ── FORM ── */
+        .field {
+            position: relative;
+            margin-bottom: 28px;
+        }
+
+        .field-label {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: rgba(0,229,255,0.7);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 10px;
+        }
+
+        .field-icon {
+            position: absolute;
+            left: 18px;
+            bottom: 15px;
+            color: rgba(0,229,255,0.5);
+            font-size: 15px;
+            transition: color 0.3s;
+        }
+
+        .field-input {
+            width: 100%;
+            padding: 16px 18px 16px 48px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 14px;
+            font-size: 15px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: 2px;
+            transition: all 0.3s;
+            outline: none;
+        }
+        .field-input::placeholder {
+            color: rgba(255,255,255,0.2);
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0;
+        }
+        .field-input:focus {
+            border-color: rgba(0,229,255,0.5);
+            background: rgba(0,229,255,0.04);
+            box-shadow: 0 0 0 3px rgba(0,229,255,0.08), 0 0 20px rgba(0,229,255,0.1);
+        }
+        .field-input:focus + .field-icon,
+        .field:focus-within .field-icon { color: var(--cyan); }
+
+        /* ── SUBMIT BUTTON ── */
+        .submit-btn {
+            width: 100%;
+            padding: 17px;
+            border: none;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            font-family: 'Space Grotesk', sans-serif;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #4f46e5, var(--violet), #2563eb);
+            background-size: 200% 200%;
+            animation: gradShift 4s ease infinite;
+            color: #fff;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        @keyframes gradShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        .submit-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px rgba(124,58,237,0.5), 0 0 0 1px rgba(124,58,237,0.3);
+        }
+        .submit-btn:active { transform: translateY(0); }
+
+        /* shimmer sweep */
+        .submit-btn::before {
+            content: '';
+            position: absolute;
+            top: 0; left: -100%;
+            width: 100%; height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent);
+            transition: left 0.5s;
+        }
+        .submit-btn:hover::before { left: 100%; }
+
+        /* ── ERROR ── */
+        .error-box {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3);
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #f87171;
+            font-size: 13px;
+            animation: shake 0.4s ease-out;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-8px); }
+            40% { transform: translateX(8px); }
+            60% { transform: translateX(-5px); }
+            80% { transform: translateX(5px); }
+        }
+
+        /* ── BADGES ── */
+        .badges {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 30px;
+            flex-wrap: wrap;
+        }
+        .badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 100px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.07);
+            font-size: 11px;
+            color: rgba(255,255,255,0.5);
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        .badge:hover {
+            background: rgba(0,229,255,0.08);
+            border-color: rgba(0,229,255,0.2);
+            color: var(--cyan);
+        }
+        .badge i { font-size: 10px; color: var(--cyan); }
+
+        /* ── DIVIDER ── */
+        .divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 28px 0;
+        }
+        .divider-line {
+            flex: 1;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent);
+        }
+        .divider-text {
+            font-size: 11px;
+            color: rgba(255,255,255,0.2);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* ── DEMO BOX ── */
+        .demo-box {
+            background: rgba(0,229,255,0.04);
+            border: 1px solid rgba(0,229,255,0.12);
+            border-radius: 12px;
+            padding: 14px 16px;
+            text-align: center;
+        }
+        .demo-label { font-size: 11px; color: rgba(255,255,255,0.35); margin-bottom: 4px; }
+        .demo-pass {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 500;
+            color: var(--cyan);
+            letter-spacing: 3px;
+        }
+
+        /* ── LOADING SPINNER ── */
+        .spinner {
+            display: inline-block;
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+            vertical-align: middle;
+            margin-right: 8px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ── FOOTER ── */
+        .foot {
+            position: fixed;
+            bottom: 20px;
+            left: 0; right: 0;
+            text-align: center;
+            font-size: 11px;
+            color: rgba(255,255,255,0.15);
+            z-index: 1;
+            letter-spacing: 1px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="bg-canvas"></canvas>
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid-overlay"></div>
+    <div class="particle-field" id="sparks"></div>
+
+    <div class="wrapper">
+        <div class="card">
+            <div class="logo-wrap">
+                <div class="logo-icon-wrap">
+                    <i class="fab fa-python"></i>
+                </div>
+                <div class="brand-name">ZXTCOZY </div>
+                <div class="brand-tag">Command Center</div>
+            </div>
+
+            {% if error %}
+            <div class="error-box">
+                <i class="fas fa-shield-exclamation"></i>
+                <span>{{ error }}</span>
+            </div>
+            {% endif %}
+
+            <form method="POST" id="loginForm">
+                <div class="field">
+                    <label class="field-label">Access Key</label>
+                    <input type="password" name="password" class="field-input"
+                           placeholder="Enter your secret key" required autofocus>
+                    <i class="fas fa-key field-icon"></i>
+                </div>
+
+                <button type="submit" class="submit-btn" id="submitBtn">
+                    <i class="fas fa-arrow-right-to-bracket"></i>&nbsp; Enter the Nexus
+                </button>
+            </form>
+
+            <div class="divider">
+                <div class="divider-line"></div>
+                <span class="divider-text">Demo</span>
+                <div class="divider-line"></div>
+            </div>
+
+            <div class="demo-box">
+                <div class="demo-label">Default Password</div>
+                <div class="demo-pass">ZXTCOZY FXU</div>
+            </div>
+
+            <div class="badges">
+                <span class="badge"><i class="fas fa-server"></i> 24/7 Uptime</span>
+                <span class="badge"><i class="fas fa-terminal"></i> Live Console</span>
+                <span class="badge"><i class="fas fa-shield-halved"></i> Encrypted</span>
+                <span class="badge"><i class="fas fa-gauge-high"></i> Real-time</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="foot">ZXTCOZY  Pro &nbsp;·&nbsp; Enterprise Python Hosting</div>
+
+    <script>
+        /* ── CANVAS CONSTELLATION ── */
+        const canvas = document.getElementById('bg-canvas');
+        const ctx = canvas.getContext('2d');
+        let W, H, nodes = [];
+
+        function resize() {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        }
+
+        function initNodes(n = 80) {
+            nodes = Array.from({length: n}, () => ({
+                x: Math.random() * W, y: Math.random() * H,
+                vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
+                r: Math.random() * 1.5 + 0.5
+            }));
+        }
+
+        function drawNodes() {
+            ctx.clearRect(0, 0, W, H);
+            nodes.forEach(n => {
+                n.x += n.vx; n.y += n.vy;
+                if (n.x < 0 || n.x > W) n.vx *= -1;
+                if (n.y < 0 || n.y > H) n.vy *= -1;
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(0,229,255,0.5)';
+                ctx.fill();
+            });
+            nodes.forEach((a, i) => {
+                nodes.slice(i+1).forEach(b => {
+                    const d = Math.hypot(a.x - b.x, a.y - b.y);
+                    if (d < 130) {
+                        ctx.beginPath();
+                        ctx.moveTo(a.x, a.y);
+                        ctx.lineTo(b.x, b.y);
+                        ctx.strokeStyle = `rgba(0,229,255,${0.15 * (1 - d/130)})`;
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+                });
+            });
+            requestAnimationFrame(drawNodes);
+        }
+
+        window.addEventListener('resize', () => { resize(); initNodes(); });
+        resize(); initNodes(); drawNodes();
+
+        /* ── FLOATING SPARKS ── */
+        const sparksContainer = document.getElementById('sparks');
+        const SPARK_COLORS = ['#00e5ff', '#7c3aed', '#f472b6', '#38bdf8', '#a78bfa'];
+
+        function makeSpark() {
+            const el = document.createElement('div');
+            el.className = 'spark';
+            const size = Math.random() * 4 + 1;
+            el.style.cssText = `
+                width:${size}px; height:${size}px;
+                left:${Math.random()*100}%;
+                background:${SPARK_COLORS[Math.floor(Math.random()*SPARK_COLORS.length)]};
+                animation-duration:${Math.random()*8+6}s;
+                animation-delay:${Math.random()*6}s;
+                box-shadow:0 0 6px currentColor;
+            `;
+            sparksContainer.appendChild(el);
+            setTimeout(() => el.remove(), 14000);
+        }
+        setInterval(makeSpark, 300);
+        for(let i=0;i<20;i++) makeSpark();
+
+        /* ── FORM LOADING STATE ── */
+        document.getElementById('loginForm').addEventListener('submit', function() {
+            const btn = document.getElementById('submitBtn');
+            btn.innerHTML = '<span class="spinner"></span>Authenticating…';
+            btn.disabled = true;
+        });
+    </script>
+</body>
+</html>

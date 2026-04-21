@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZXTCOZY — Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --g:  #00ff9f;
+            --cy: #00e5ff;
+            --rd: #ff4d6d;
+            --am: #ffb700;
+            --pu: #a78bfa;
+            --bg: #010c14;
+            --s1: #030f1e;
+            --bdr:rgba(0,255,159,0.13);
+        }
+        *,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+        html,body{height:100%;overflow:hidden;}
+        body{font-family:'JetBrains Mono',monospace;background:var(--bg);color:var(--g);display:flex;flex-direction:column;}
+        body::before{content:'';position:fixed;inset:0;z-index:999;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%);}
+        body::after{content:'';position:fixed;inset:0;z-index:998;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0,rgba(0,0,0,0) 2px,rgba(0,0,0,.04) 2px,rgba(0,0,0,.04) 4px);}
+        .glow-bg{position:fixed;top:-80px;left:50%;transform:translateX(-50%);width:700px;height:350px;background:rgba(0,255,159,.05);filter:blur(90px);border-radius:50%;pointer-events:none;z-index:0;animation:gbPulse 7s ease-in-out infinite;}
+        @keyframes gbPulse{0%,100%{opacity:.6}50%{opacity:1}}
+
+        /* HEADER */
+        .hdr{position:relative;z-index:10;flex-shrink:0;height:56px;background:rgba(3,15,30,.97);border-bottom:1px solid var(--bdr);display:flex;align-items:center;justify-content:space-between;padding:0 20px;backdrop-filter:blur(20px);}
+        .hdr::after{content:'';position:absolute;top:0;left:5%;right:5%;height:1px;background:linear-gradient(90deg,transparent,var(--g),transparent);animation:neonLine 3s ease-in-out infinite;}
+        @keyframes neonLine{0%,100%{opacity:.3}50%{opacity:.9;box-shadow:0 0 12px var(--g)}}
+        .hdr-left{display:flex;align-items:center;gap:14px;}
+        .mdots{display:flex;gap:6px;}
+        .md{width:12px;height:12px;border-radius:50%;}
+        .md-r{background:#ff5f56;box-shadow:0 0 5px #ff5f56;}
+        .md-y{background:#febc2e;box-shadow:0 0 5px #febc2e;}
+        .md-g{background:#28c840;box-shadow:0 0 5px #28c840;}
+        .hdr-icon{color:var(--g);opacity:.6;font-size:13px;}
+        .hdr-name{font-size:13px;font-weight:500;color:rgba(255,255,255,.8);}
+        .hdr-id{font-size:10px;color:rgba(0,255,159,.35);}
+        .chip{display:inline-flex;align-items:center;gap:6px;padding:3px 11px;border-radius:100px;font-size:10px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;}
+        .chip.running{background:rgba(0,255,159,.09);border:1px solid rgba(0,255,159,.28);color:var(--g);}
+        .chip.stopped{background:rgba(255,77,109,.09);border:1px solid rgba(255,77,109,.28);color:var(--rd);}
+        .chip.loading{background:rgba(255,183,0,.09);border:1px solid rgba(255,183,0,.28);color:var(--am);}
+        .chip .blip{width:5px;height:5px;border-radius:50%;background:currentColor;}
+        .chip.running .blip{animation:blip 1.3s ease-in-out infinite;box-shadow:0 0 5px currentColor;}
+        @keyframes blip{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.6)}}
+        .hdr-right{display:flex;align-items:center;gap:7px;}
+        .hbtn{display:inline-flex;align-items:center;gap:6px;padding:6px 13px;border-radius:8px;border:none;cursor:pointer;font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;letter-spacing:.3px;transition:all .2s;text-decoration:none;}
+        .hbtn-start{background:rgba(0,255,159,.09);border:1px solid rgba(0,255,159,.25);color:var(--g);}
+        .hbtn-stop{background:rgba(255,77,109,.09);border:1px solid rgba(255,77,109,.25);color:var(--rd);}
+        .hbtn-pkg{background:rgba(0,229,255,.07);border:1px solid rgba(0,229,255,.2);color:var(--cy);}
+        .hbtn-ghost{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.09);color:rgba(255,255,255,.45);}
+        .hbtn:hover{filter:brightness(1.5);transform:translateY(-1px);}
+
+        /* BODY */
+        .body-area{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative;z-index:1;}
+
+        /* TABS */
+        .tabs{display:flex;gap:1px;background:rgba(3,15,30,.97);border-bottom:1px solid var(--bdr);flex-shrink:0;}
+        .tab{padding:9px 20px;font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .2s;position:relative;color:rgba(255,255,255,.3);background:transparent;border:none;font-family:'Space Grotesk',sans-serif;}
+        .tab.active{color:var(--g);}
+        .tab.active::after{content:'';position:absolute;bottom:0;left:10%;right:10%;height:2px;background:var(--g);box-shadow:0 0 8px var(--g);border-radius:2px 2px 0 0;}
+        .tab:hover{color:rgba(255,255,255,.6);}
+
+        /* PANELS */
+        .panel{display:none;flex:1;flex-direction:column;overflow:hidden;}
+        .panel.active{display:flex;}
+
+        /* OUTPUT */
+        .output-wrap{flex:1;overflow-y:auto;overflow-x:hidden;padding:16px 22px;font-size:12.5px;line-height:1.75;}
+        .banner{border:1px solid var(--bdr);border-radius:8px;padding:14px 18px;margin-bottom:18px;background:rgba(0,255,159,.025);animation:bannerIn .5s ease;}
+        @keyframes bannerIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+        .banner-top{color:rgba(0,255,159,.4);font-size:10px;letter-spacing:3px;margin-bottom:6px;}
+        .banner-title{font-size:17px;font-weight:600;color:var(--g);text-shadow:0 0 18px rgba(0,255,159,.4);}
+        .banner-meta{color:rgba(0,255,159,.3);font-size:10px;margin-top:5px;}
+        .log-line{display:flex;gap:10px;padding:1px 0;border-radius:3px;animation:logIn .2s ease;}
+        @keyframes logIn{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
+        .log-ts{color:rgba(0,255,159,.2);font-size:10px;flex-shrink:0;padding-top:2px;min-width:68px;}
+        .log-bar{width:2px;border-radius:1px;flex-shrink:0;margin:3px 0;background:rgba(0,255,159,.25);}
+        .log-txt{flex:1;white-space:pre-wrap;word-break:break-all;}
+        .log-line.err .log-bar{background:var(--rd);}
+        .log-line.err .log-txt{color:rgba(255,77,109,.85);}
+        .log-line.cmd .log-bar{background:var(--am);}
+        .log-line.cmd .log-txt{color:var(--am);}
+        .log-line.info .log-bar{background:var(--cy);}
+        .log-line.info .log-txt{color:rgba(0,229,255,.8);}
+        .log-line.sep .log-txt{color:rgba(0,255,159,.3);letter-spacing:2px;}
+        .log-line.stdin-echo .log-bar{background:var(--pu);}
+        .log-line.stdin-echo .log-txt{color:rgba(167,139,250,.9);}
+        .empty-output{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:180px;gap:10px;color:rgba(0,255,159,.2);}
+        .empty-output i{font-size:32px;}
+
+        /* ── STDIN SECTION ── */
+        .stdin-section{border-top:1px solid var(--bdr);background:var(--s1);flex-shrink:0;padding:10px 20px;}
+        .stdin-label{font-size:9px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,.2);display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+        .pulse-dot{width:5px;height:5px;border-radius:50%;background:var(--pu);box-shadow:0 0 6px var(--pu);animation:blip 1.5s ease-in-out infinite;}
+        .stdin-row{display:flex;align-items:center;gap:10px;}
+        .stdin-prompt{font-size:12px;color:var(--pu);white-space:nowrap;}
+        .stdin-input{flex:1;background:rgba(167,139,250,.07);border:1px solid rgba(167,139,250,.2);border-radius:8px;padding:9px 14px;font-family:'JetBrains Mono',monospace;font-size:12.5px;color:#fff;outline:none;caret-color:var(--pu);transition:border-color .2s,box-shadow .2s;}
+        .stdin-input::placeholder{color:rgba(167,139,250,.25);}
+        .stdin-input:focus{border-color:rgba(167,139,250,.5);box-shadow:0 0 14px rgba(167,139,250,.12);}
+        .stdin-send{padding:9px 16px;border-radius:8px;border:1px solid rgba(167,139,250,.25);background:rgba(167,139,250,.12);color:var(--pu);font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;white-space:nowrap;display:flex;align-items:center;gap:6px;}
+        .stdin-send:hover{background:rgba(167,139,250,.22);box-shadow:0 0 14px rgba(167,139,250,.2);}
+        .stdin-send.disabled{opacity:.4;cursor:not-allowed;pointer-events:none;}
+
+        /* CMD BAR */
+        .cmd-bar{border-top:1px solid var(--bdr);background:rgba(3,15,30,.97);padding:0 20px;height:50px;display:flex;align-items:center;gap:10px;flex-shrink:0;}
+        .cmd-prompt{color:var(--g);font-size:12px;font-weight:600;white-space:nowrap;display:flex;align-items:center;gap:5px;}
+        .cmd-caret{color:rgba(0,255,159,.35);}
+        .cmd-input{flex:1;background:transparent;border:none;color:#fff;font-family:'JetBrains Mono',monospace;font-size:12.5px;outline:none;caret-color:var(--g);}
+        .cmd-input::placeholder{color:rgba(0,255,159,.18);}
+        .cmd-run{padding:7px 14px;border-radius:8px;border:1px solid rgba(0,255,159,.2);background:rgba(0,255,159,.08);color:var(--g);font-family:'Space Grotesk',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:5px;}
+        .cmd-run:hover{background:rgba(0,255,159,.16);box-shadow:0 0 14px rgba(0,255,159,.15);}
+
+        /* PACKAGES PANEL */
+        .pkg-panel{padding:20px 22px;gap:12px;overflow-y:auto;}
+        .pkg-install-row{display:flex;gap:10px;margin-bottom:14px;}
+        .pkg-input{flex:1;padding:11px 14px;border-radius:10px;background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.15);color:#fff;font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;transition:all .2s;}
+        .pkg-input::placeholder{color:rgba(0,229,255,.2);}
+        .pkg-input:focus{border-color:rgba(0,229,255,.4);box-shadow:0 0 12px rgba(0,229,255,.1);}
+        .pkg-btn{padding:11px 18px;border-radius:10px;border:1px solid rgba(0,229,255,.25);background:rgba(0,229,255,.1);color:var(--cy);font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;}
+        .pkg-btn:hover{filter:brightness(1.4);}
+        .pkg-list-box{background:rgba(0,0,0,.3);border:1px solid var(--bdr);border-radius:10px;padding:14px;font-size:12px;color:rgba(255,255,255,.5);max-height:calc(100vh - 280px);overflow-y:auto;white-space:pre-wrap;}
+
+        /* NOTIFICATIONS */
+        .notif{position:fixed;top:14px;right:14px;z-index:9999;padding:11px 18px;border-radius:10px;font-size:12px;font-family:'Space Grotesk',sans-serif;display:flex;align-items:center;gap:8px;animation:notifIn .35s ease;box-shadow:0 8px 30px rgba(0,0,0,.5);}
+        @keyframes notifIn{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
+        .notif.ok{background:rgba(0,255,159,.1);border:1px solid rgba(0,255,159,.3);color:var(--g);}
+        .notif.err{background:rgba(255,77,109,.1);border:1px solid rgba(255,77,109,.3);color:var(--rd);}
+        .notif.inf{background:rgba(0,229,255,.1);border:1px solid rgba(0,229,255,.3);color:var(--cy);}
+
+        ::-webkit-scrollbar{width:5px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:rgba(0,255,159,.15);border-radius:3px;}
+        ::-webkit-scrollbar-thumb:hover{background:rgba(0,255,159,.3);}
+    </style>
+</head>
+<body>
+<div class="glow-bg"></div>
+
+<!-- HEADER -->
+<header class="hdr">
+    <div class="hdr-left">
+        <div class="mdots">
+            <div class="md md-r"></div><div class="md md-y"></div><div class="md md-g"></div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;">
+            <i class="fas fa-terminal hdr-icon"></i>
+            <div>
+                <div class="hdr-name" id="hdrName">Connecting…</div>
+                <div class="hdr-id"   id="hdrId">—</div>
+            </div>
+        </div>
+        <div class="chip loading" id="statusChip">
+            <span class="blip"></span><span id="statusText">LOADING</span>
+        </div>
+    </div>
+    <div class="hdr-right">
+        <button class="hbtn hbtn-start" onclick="startScript()"><i class="fas fa-play"></i> Start</button>
+        <button class="hbtn hbtn-stop"  onclick="stopScript()"><i class="fas fa-stop"></i> Stop</button>
+        <button class="hbtn hbtn-pkg"   onclick="switchTab('pkgs')"><i class="fas fa-box"></i> Packages</button>
+        <button class="hbtn hbtn-ghost" onclick="clearOutput()"><i class="fas fa-eraser"></i> Clear</button>
+        <a href="/dashboard" class="hbtn hbtn-ghost"><i class="fas fa-house"></i></a>
+    </div>
+</header>
+
+<!-- BODY -->
+<div class="body-area">
+    <!-- TABS -->
+    <div class="tabs">
+        <button class="tab active" id="tab-output" onclick="switchTab('output')">
+            <i class="fas fa-terminal" style="margin-right:5px;font-size:10px;"></i>Output & Input
+        </button>
+        <button class="tab" id="tab-pkgs" onclick="switchTab('pkgs')">
+            <i class="fas fa-cubes" style="margin-right:5px;font-size:10px;"></i>Packages
+        </button>
+    </div>
+
+    <!-- OUTPUT PANEL -->
+    <div class="panel active" id="panel-output">
+        <div class="output-wrap" id="outputWrap">
+            <div class="banner">
+                <div class="banner-top">// ZXTCOZY  RUNTIME v3.1</div>
+                <div class="banner-title">▶ Interactive Terminal</div>
+                <div class="banner-meta">PTY session · stdin piping enabled · real-time SSE output</div>
+            </div>
+            <div class="empty-output" id="emptyHint">
+                <i class="fas fa-satellite-dish"></i>
+                <span style="font-size:12px;">No output yet — start the script or run a shell command below.</span>
+            </div>
+        </div>
+
+        <!-- ─── STDIN: send input to a running/interactive script ─── -->
+        <div class="stdin-section">
+            <div class="stdin-label">
+                <span class="pulse-dot"></span>
+                Script stdin — send input directly to the running process (answer prompts, etc.)
+            </div>
+            <div class="stdin-row">
+                <span class="stdin-prompt"><i class="fas fa-chevron-right" style="font-size:10px;"></i>&nbsp;→</span>
+                <input type="text" class="stdin-input" id="stdinInput"
+                       placeholder="Start the script first, then type here to send keyboard input to it…"
+                       autocomplete="off" spellcheck="false">
+                <button class="stdin-send disabled" id="stdinBtn" onclick="sendStdin()">
+                    <i class="fas fa-paper-plane"></i> Send
+                </button>
+            </div>
+        </div>
+
+        <!-- ─── SHELL command bar ─── -->
+        <div class="cmd-bar">
+            <span class="cmd-prompt"><span class="cmd-caret">▶</span>shell:~$</span>
+            <input type="text" class="cmd-input" id="cmdInput"
+                   placeholder="Shell command: ls, pip install requests, python -c 'print(1+1)', cat file.txt…"
+                   autocomplete="off" spellcheck="false">
+            <button class="cmd-run" onclick="execCmd()"><i class="fas fa-bolt"></i> Run</button>
+        </div>
+    </div>
+
+    <!-- PACKAGES PANEL -->
+    <div class="panel pkg-panel" id="panel-pkgs">
+        <h3 style="font-size:14px;font-family:'Space Grotesk',sans-serif;color:rgba(255,255,255,.7);margin-bottom:16px;">
+            <i class="fas fa-cubes" style="color:var(--cy);margin-right:8px;"></i>Package Manager
+        </h3>
+        <div class="pkg-install-row">
+            <input type="text" class="pkg-input" id="pkgInput" placeholder="package name (e.g. requests, numpy==1.26.0)">
+            <button class="pkg-btn" onclick="installPkg()"><i class="fas fa-download"></i> pip install</button>
+        </div>
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+            <button class="pkg-btn" style="flex:1;" onclick="installReqs()"><i class="fas fa-file-lines"></i> Install requirements.txt</button>
+            <button class="pkg-btn" style="flex:1;" onclick="listPkgs()"><i class="fas fa-list"></i> List installed</button>
+        </div>
+        <div class="pkg-list-box" id="pkgOutput">Ready. Use the buttons above to manage packages.</div>
+    </div>
+</div>
+
+<script>
+    const SID = '{{ script_id }}';
+    let isRunning = false;
+    let evtSrc    = null;
+    let lastLen   = 0;
+    const cmdHistory = [];
+    let histIdx = -1;
+
+    /* ── notify ── */
+    function notify(msg, type='ok') {
+        document.querySelectorAll('.notif').forEach(n=>n.remove());
+        const n=document.createElement('div');
+        n.className=`notif ${type}`;
+        const icons={ok:'fa-circle-check',err:'fa-circle-xmark',inf:'fa-circle-info'};
+        n.innerHTML=`<i class="fas ${icons[type]||'fa-circle-info'}"></i>${msg}`;
+        document.body.appendChild(n);
+        setTimeout(()=>{n.style.opacity='0';n.style.transition='opacity .4s';setTimeout(()=>n.remove(),400);},3500);
+    }
+
+    /* ── tabs ── */
+    function switchTab(name){
+        document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+        document.getElementById(`tab-${name}`).classList.add('active');
+        document.getElementById(`panel-${name}`).classList.add('active');
+    }
+
+    /* ── log output ── */
+    function ts(){return new Date().toLocaleTimeString('en-US',{hour12:false});}
+    function esc(t){const d=document.createElement('div');d.textContent=t;return d.innerHTML;}
+    function classify(line){
+        const l=line.toLowerCase();
+        if(/error|exception|traceback/.test(l)) return 'err';
+        if(/warning/.test(l)) return 'info';
+        if(/^[=\-*]+$/.test(line.trim())) return 'sep';
+        return '';
+    }
+    function appendLine(text, cls=''){
+        document.getElementById('emptyHint')?.remove();
+        const wrap=document.getElementById('outputWrap');
+        const el=document.createElement('div');
+        el.className=`log-line ${cls||classify(text)}`;
+        el.innerHTML=`<span class="log-ts">${ts()}</span><div class="log-bar"></div><div class="log-txt">${esc(text)}</div>`;
+        wrap.appendChild(el);
+        wrap.scrollTop=wrap.scrollHeight;
+    }
+    function clearOutput(){
+        document.querySelectorAll('#outputWrap .log-line').forEach(e=>e.remove());
+        appendLine('[output cleared]','sep');
+    }
+
+    /* ── status ── */
+    function setStatus(status, name){
+        isRunning=(status==='running');
+        const chip=document.getElementById('statusChip');
+        chip.className=`chip ${status}`;
+        document.getElementById('statusText').textContent=status.toUpperCase();
+        if(name){document.getElementById('hdrName').textContent=name;document.getElementById('hdrId').textContent=SID;}
+        // stdin button
+        const btn=document.getElementById('stdinBtn');
+        const inp=document.getElementById('stdinInput');
+        if(isRunning){
+            btn.classList.remove('disabled');
+            inp.placeholder='Type here and press Enter (or Send) to send input to the script…';
+        } else {
+            btn.classList.add('disabled');
+            inp.placeholder='Start the script first, then type here to send keyboard input to it…';
+        }
+    }
+
+    async function refreshStatus(){
+        try{
+            const r=await fetch('/api/scripts');
+            const scripts=await r.json();
+            const s=scripts.find(x=>x.id===SID);
+            if(s) setStatus(s.status,s.name);
+        }catch(e){}
+    }
+
+    /* ── SSE live streaming ── */
+    function startSSE(){
+        if(evtSrc){evtSrc.close();evtSrc=null;}
+        evtSrc=new EventSource(`/api/logs/stream/${SID}`);
+        evtSrc.onmessage=(e)=>{
+            const line=JSON.parse(e.data);
+            if(line.trim()!=='') appendLine(line);
+        };
+        evtSrc.addEventListener('stopped',()=>{
+            setStatus('stopped');
+            notify('Script finished / stopped','inf');
+            evtSrc.close(); evtSrc=null;
+        });
+        evtSrc.onerror=()=>{
+            if(evtSrc){evtSrc.close();evtSrc=null;}
+            if(isRunning) setTimeout(pollFallback,2000);
+        };
+    }
+    async function pollFallback(){
+        try{
+            const r=await fetch(`/api/logs/${SID}`);
+            const d=await r.json();
+            if(d.logs&&d.logs.length>lastLen){
+                const fresh=d.logs.slice(lastLen);
+                lastLen=d.logs.length;
+                fresh.split('\n').forEach(l=>{if(l.trim())appendLine(l);});
+            }
+        }catch(e){}
+        if(isRunning) setTimeout(pollFallback,2000);
+    }
+    async function loadInitialLog(){
+        try{
+            const r=await fetch(`/api/logs/${SID}`);
+            const d=await r.json();
+            if(d.logs&&d.logs.trim()){
+                lastLen=d.logs.length;
+                d.logs.split('\n').forEach(l=>{if(l.trim())appendLine(l);});
+            }
+        }catch(e){}
+    }
+
+    /* ── script controls ── */
+    async function startScript(){
+        const r=await fetch(`/api/start/${SID}`,{method:'POST'});
+        const d=await r.json();
+        if(d.success){
+            notify('Script launched 🚀');
+            setStatus('running');
+            lastLen=0;
+            document.querySelectorAll('#outputWrap .log-line').forEach(e=>e.remove());
+            appendLine(`[process started — PID ${d.pid}]`,'info');
+            startSSE();
+        } else {
+            notify('Failed: '+(d.error||'unknown'),'err');
+        }
+    }
+    async function stopScript(){
+        const r=await fetch(`/api/stop/${SID}`,{method:'POST'});
+        const d=await r.json();
+        if(d.success){
+            notify('Script stopped');
+            setStatus('stopped');
+            if(evtSrc){evtSrc.close();evtSrc=null;}
+            appendLine('[terminated by user]','info');
+        } else {
+            notify('Error: '+(d.error||'unknown'),'err');
+        }
+    }
+
+    /* ── STDIN: send input to running process via PTY ── */
+    async function sendStdin(){
+        if(!isRunning){notify('Script is not running','err');return;}
+        const inp=document.getElementById('stdinInput');
+        const text=inp.value;  // allow sending empty line (just Enter)
+        try{
+            const r=await fetch(`/api/stdin/${SID}`,{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({text})
+            });
+            const d=await r.json();
+            if(d.success){
+                appendLine('→ '+text,'stdin-echo');
+                inp.value='';
+            } else {
+                notify('stdin error: '+d.error,'err');
+            }
+        }catch(e){
+            notify('Network error','err');
+        }
+    }
+
+    /* ── shell command ── */
+    async function execCmd(){
+        const inp=document.getElementById('cmdInput');
+        const cmd=inp.value.trim();
+        if(!cmd) return;
+        cmdHistory.unshift(cmd); histIdx=-1;
+        appendLine('$ '+cmd,'cmd');
+        inp.value='';
+        try{
+            const r=await fetch('/api/terminal/command',{
+                method:'POST',
+                headers:{'Content-Type':'application/json'},
+                body:JSON.stringify({command:cmd,script_id:SID})
+            });
+            const d=await r.json();
+            if(d.success){
+                if(d.output) d.output.split('\n').forEach(l=>{if(l.trim())appendLine(l);});
+                if(d.error)  d.error.split('\n').forEach(l=>{if(l.trim())appendLine(l,'err');});
+                if(!d.output&&!d.error) appendLine('[command returned no output]','sep');
+            } else {
+                appendLine('Error: '+(d.error||'failed'),'err');
+            }
+        }catch(e){
+            appendLine('Network error: '+e.message,'err');
+        }
+    }
+
+    /* ── packages ── */
+    async function installPkg(){
+        const pkg=document.getElementById('pkgInput').value.trim();
+        if(!pkg){notify('Enter a package name','err');return;}
+        const box=document.getElementById('pkgOutput');
+        box.textContent=`Installing ${pkg}…`;
+        const r=await fetch('/api/terminal/install-package',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({package:pkg})});
+        const d=await r.json();
+        box.textContent=(d.output||'')+(d.error?'\n'+d.error:'');
+        notify(d.success?`Installed ${pkg} ✅`:'Install failed',d.success?'ok':'err');
+    }
+    async function installReqs(){
+        const box=document.getElementById('pkgOutput');
+        box.textContent='Installing from requirements.txt…';
+        const r=await fetch(`/api/install-requirements/${SID}`,{method:'POST'});
+        const d=await r.json();
+        box.textContent=(d.output||'')+(d.error?'\n'+d.error:'') || d.error || 'Done.';
+        notify(d.success?'Requirements installed ✅':(d.error||'Failed'),d.success?'ok':'err');
+    }
+    async function listPkgs(){
+        const box=document.getElementById('pkgOutput');
+        box.textContent='Loading…';
+        const r=await fetch('/api/terminal/list-packages');
+        const d=await r.json();
+        box.textContent=d.packages||d.error||'No data';
+    }
+
+    /* ── keyboard ── */
+    document.getElementById('cmdInput').addEventListener('keydown',e=>{
+        if(e.key==='Enter'){execCmd();return;}
+        if(e.key==='ArrowUp'){if(histIdx<cmdHistory.length-1)histIdx++;e.target.value=cmdHistory[histIdx]||'';e.preventDefault();}
+        if(e.key==='ArrowDown'){histIdx=Math.max(-1,histIdx-1);e.target.value=histIdx>=0?cmdHistory[histIdx]:'';e.preventDefault();}
+    });
+    document.getElementById('stdinInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendStdin();});
+    document.getElementById('pkgInput').addEventListener('keydown',e=>{if(e.key==='Enter')installPkg();});
+
+    /* ── init ── */
+    (async()=>{
+        await refreshStatus();
+        await loadInitialLog();
+        if(isRunning) startSSE();
+        setInterval(refreshStatus,4000);
+    })();
+</script>
+</body>
+</html>

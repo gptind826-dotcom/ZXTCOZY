@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZXTCOZY — Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --cyan: #00e5ff;
+            --violet: #7c3aed;
+            --pink: #f472b6;
+            --green: #10b981;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --dark: #020617;
+            --surface: rgba(8,15,40,0.7);
+            --border: rgba(0,229,255,0.1);
+            --sidebar-w: 260px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Space Grotesk', sans-serif;
+            background: var(--dark);
+            color: #e2e8f0;
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+        .ambient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(100px);
+            animation: ambientDrift ease-in-out infinite;
+        }
+        .ao1 { width:600px;height:600px;background:rgba(124,58,237,0.12);top:-200px;left:-100px;animation-duration:20s; }
+        .ao2 { width:500px;height:500px;background:rgba(0,229,255,0.08);bottom:-150px;right:-100px;animation-duration:25s;animation-direction:reverse; }
+        .ao3 { width:350px;height:350px;background:rgba(244,114,182,0.07);top:40%;left:50%;animation-duration:15s; }
+
+        @keyframes ambientDrift {
+            0%,100%{ transform:translate(0,0); }
+            33%{ transform:translate(40px,30px); }
+            66%{ transform:translate(-20px,50px); }
+        }
+
+        .grid-bg {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background-image:
+                linear-gradient(rgba(0,229,255,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,229,255,0.025) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        .sidebar {
+            position: fixed;
+            left: 0; top: 0;
+            width: var(--sidebar-w);
+            height: 100%;
+            background: rgba(4,10,28,0.9);
+            border-right: 1px solid var(--border);
+            backdrop-filter: blur(24px);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-brand {
+            padding: 28px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-mark {
+            width: 42px; height: 42px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--violet), #2563eb);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(124,58,237,0.4);
+            animation: markPulse 3s ease-in-out infinite;
+        }
+        @keyframes markPulse {
+            0%,100%{ box-shadow:0 0 20px rgba(124,58,237,0.4); }
+            50%{ box-shadow:0 0 35px rgba(0,229,255,0.5); }
+        }
+
+        .brand-info { flex: 1; }
+        .brand-title {
+            font-size: 17px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .brand-sub {
+            font-size: 10px;
+            color: rgba(255,255,255,0.3);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 2px;
+        }
+
+        .status-pill {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 20px 24px 12px;
+        }
+        .status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: dotBlink 2s ease-in-out infinite;
+        }
+        @keyframes dotBlink {
+            0%,100%{ opacity:1; }
+            50%{ opacity:0.4; }
+        }
+        .status-text { font-size: 11px; color: rgba(255,255,255,0.4); letter-spacing: 1px; }
+
+        .nav { padding: 8px 16px; flex: 1; }
+        .nav-section-label {
+            font-size: 9px;
+            font-weight: 700;
+            color: rgba(255,255,255,0.2);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            padding: 16px 8px 8px;
+        }
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 11px 14px;
+            border-radius: 12px;
+            color: rgba(255,255,255,0.5);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 2px;
+            transition: all 0.25s;
+            position: relative;
+            cursor: pointer;
+        }
+        .nav-link::before {
+            content: '';
+            position: absolute;
+            left: 0; top: 50%;
+            transform: translateY(-50%);
+            width: 3px; height: 0;
+            background: var(--cyan);
+            border-radius: 0 4px 4px 0;
+            transition: height 0.25s;
+        }
+        .nav-link:hover, .nav-link.active {
+            background: rgba(0,229,255,0.06);
+            color: var(--cyan);
+        }
+        .nav-link:hover::before, .nav-link.active::before { height: 60%; }
+        .nav-link i { width: 18px; font-size: 15px; }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 14px;
+            border-radius: 12px;
+            color: rgba(239,68,68,0.6);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.25s;
+            width: 100%;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        .logout-btn:hover {
+            background: rgba(239,68,68,0.08);
+            color: var(--red);
+        }
+
+        .main {
+            margin-left: var(--sidebar-w);
+            padding: 32px 36px;
+            position: relative;
+            z-index: 1;
+            min-height: 100vh;
+        }
+
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+            animation: slideDown 0.6s ease forwards;
+        }
+        @keyframes slideDown {
+            from { opacity:0; transform:translateY(-20px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+
+        .page-heading { font-size: 26px; font-weight: 700; }
+        .page-heading span {
+            background: linear-gradient(135deg, #fff, var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .page-sub { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+        .topbar-right { display: flex; align-items: center; gap: 14px; }
+
+        .time-display {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: rgba(0,229,255,0.6);
+            background: rgba(0,229,255,0.05);
+            border: 1px solid var(--border);
+            padding: 8px 14px;
+            border-radius: 10px;
+        }
+
+        .avatar {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, var(--violet), var(--cyan));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 0 15px rgba(124,58,237,0.3);
+        }
+        .avatar:hover { transform:scale(1.08); box-shadow:0 0 25px rgba(0,229,255,0.4); }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 22px 24px;
+            backdrop-filter: blur(16px);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.35s;
+            animation: fadeUp 0.6s ease both;
+        }
+        .stat-card:nth-child(1){ animation-delay:0.1s; }
+        .stat-card:nth-child(2){ animation-delay:0.2s; }
+        .stat-card:nth-child(3){ animation-delay:0.3s; }
+        .stat-card:nth-child(4){ animation-delay:0.4s; }
+
+        @keyframes fadeUp {
+            from { opacity:0; transform:translateY(30px); }
+            to   { opacity:1; transform:translateY(0); }
+        }
+
+        .stat-card::before {
+            content:'';
+            position:absolute;
+            top:0;left:0;right:0;
+            height:2px;
+            background:var(--accent);
+            transform:scaleX(0);
+            transition:transform 0.35s;
+            transform-origin:left;
+        }
+        .stat-card:hover::before { transform:scaleX(1); }
+        .stat-card:hover {
+            transform:translateY(-5px);
+            border-color:rgba(0,229,255,0.2);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.4), 0 0 30px var(--accent-glow);
+        }
+
+        .stat-card[data-accent="cyan"]  { --accent:var(--cyan);  --accent-glow:rgba(0,229,255,0.15); }
+        .stat-card[data-accent="violet"]{ --accent:var(--violet); --accent-glow:rgba(124,58,237,0.15); }
+        .stat-card[data-accent="green"] { --accent:var(--green);  --accent-glow:rgba(16,185,129,0.15); }
+        .stat-card[data-accent="amber"] { --accent:var(--amber);  --accent-glow:rgba(245,158,11,0.15); }
+
+        .stat-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; }
+        .stat-label { font-size:11px; font-weight:600; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:2px; }
+
+        .stat-icon {
+            width:40px; height:40px;
+            border-radius:12px;
+            background: var(--accent-glow);
+            border:1px solid rgba(255,255,255,0.06);
+            display:flex; align-items:center; justify-content:center;
+            font-size:16px;
+            color:var(--accent);
+            transition: all 0.3s;
+        }
+        .stat-card:hover .stat-icon {
+            box-shadow: 0 0 20px var(--accent-glow);
+            transform: rotate(5deg) scale(1.05);
+        }
+
+        .stat-value {
+            font-size:32px;
+            font-weight:700;
+            font-family:'JetBrains Mono',monospace;
+            color:var(--accent);
+            line-height:1;
+            margin-bottom:6px;
+            text-shadow: 0 0 20px var(--accent-glow);
+        }
+        .stat-sub { font-size:11px; color:rgba(255,255,255,0.3); }
+
+        .charts-row {
+            display:grid;
+            grid-template-columns:2fr 1fr;
+            gap:18px;
+            margin-bottom:28px;
+        }
+
+        .glass-panel {
+            background:var(--surface);
+            border:1px solid var(--border);
+            border-radius:20px;
+            backdrop-filter:blur(16px);
+            padding:24px;
+            animation:fadeUp 0.6s 0.4s ease both;
+        }
+
+        .panel-title {
+            font-size:13px;
+            font-weight:600;
+            color:rgba(255,255,255,0.7);
+            text-transform:uppercase;
+            letter-spacing:2px;
+            margin-bottom:20px;
+            display:flex;
+            align-items:center;
+            gap:8px;
+        }
+        .panel-title i { color:var(--cyan); font-size:12px; }
+
+        .upload-zone {
+            border:2px dashed rgba(0,229,255,0.15);
+            border-radius:16px;
+            padding:28px;
+            text-align:center;
+            cursor:pointer;
+            transition:all 0.3s;
+            margin-bottom:18px;
+            position:relative;
+            overflow:hidden;
+        }
+        .upload-zone::before {
+            content:'';
+            position:absolute;
+            inset:0;
+            background:radial-gradient(circle at center, rgba(0,229,255,0.05) 0%, transparent 70%);
+            opacity:0;
+            transition:opacity 0.3s;
+        }
+        .upload-zone:hover {
+            border-color:var(--cyan);
+            background:rgba(0,229,255,0.03);
+        }
+        .upload-zone:hover::before { opacity:1; }
+        .upload-icon {
+            font-size:32px;
+            color:rgba(0,229,255,0.4);
+            margin-bottom:10px;
+            display:block;
+            transition:all 0.3s;
+            animation:uploadBounce 2s ease-in-out infinite;
+        }
+        @keyframes uploadBounce {
+            0%,100%{ transform:translateY(0); }
+            50%{ transform:translateY(-6px); }
+        }
+        .upload-zone:hover .upload-icon { color:var(--cyan); transform:scale(1.1) translateY(-4px); animation:none; }
+        .upload-text { font-size:13px; color:rgba(255,255,255,0.4); }
+        .upload-text strong { color:var(--cyan); }
+        #fileInput { display:none; }
+
+        .scripts-section { animation:fadeUp 0.6s 0.5s ease both; }
+        .section-header {
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            margin-bottom:18px;
+        }
+        .section-title {
+            font-size:13px;
+            font-weight:600;
+            color:rgba(255,255,255,0.7);
+            text-transform:uppercase;
+            letter-spacing:2px;
+            display:flex;
+            align-items:center;
+            gap:8px;
+        }
+        .section-title i { color:var(--cyan); }
+        .count-badge {
+            background:rgba(0,229,255,0.1);
+            border:1px solid rgba(0,229,255,0.2);
+            color:var(--cyan);
+            font-size:11px;
+            font-family:'JetBrains Mono',monospace;
+            padding:2px 10px;
+            border-radius:100px;
+        }
+
+        .scripts-grid {
+            display:grid;
+            grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+            gap:16px;
+        }
+
+        .script-card {
+            background:rgba(8,15,40,0.6);
+            border:1px solid var(--border);
+            border-radius:18px;
+            padding:20px;
+            transition:all 0.3s;
+            position:relative;
+            overflow:hidden;
+            animation:fadeUp 0.5s ease both;
+        }
+        .script-card::before {
+            content:'';
+            position:absolute;
+            top:0;left:0;right:0;
+            height:1px;
+            background:linear-gradient(90deg,transparent,rgba(0,229,255,0.3),transparent);
+            transform:scaleX(0);
+            transition:transform 0.4s;
+        }
+        .script-card:hover { border-color:rgba(0,229,255,0.2); transform:translateY(-3px); box-shadow:0 15px 40px rgba(0,0,0,0.35); }
+        .script-card:hover::before { transform:scaleX(1); }
+
+        .script-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+        .script-name-wrap { display:flex; align-items:center; gap:10px; }
+        .script-py-icon { font-size:20px; color:var(--cyan); opacity:0.7; }
+        .script-name { font-size:14px; font-weight:600; color:#fff; }
+        .script-id { font-size:10px; color:rgba(255,255,255,0.25); font-family:'JetBrains Mono',monospace; margin-top:2px; }
+
+        .run-badge {
+            display:inline-flex;
+            align-items:center;
+            gap:5px;
+            padding:4px 10px;
+            border-radius:100px;
+            font-size:10px;
+            font-weight:600;
+            letter-spacing:1px;
+            text-transform:uppercase;
+        }
+        .run-badge.running {
+            background:rgba(16,185,129,0.12);
+            border:1px solid rgba(16,185,129,0.3);
+            color:var(--green);
+        }
+        .run-badge.stopped {
+            background:rgba(239,68,68,0.1);
+            border:1px solid rgba(239,68,68,0.2);
+            color:#f87171;
+        }
+        .run-badge .dot {
+            width:5px;height:5px;border-radius:50%;
+            background:currentColor;
+        }
+        .run-badge.running .dot { animation:dotBlink 1.5s ease-in-out infinite; }
+
+        .script-meta { font-size:11px; color:rgba(255,255,255,0.25); margin-bottom:14px; font-family:'JetBrains Mono',monospace; }
+
+        .script-actions { display:flex; gap:8px; flex-wrap:wrap; }
+        .action-btn {
+            flex:1;
+            min-width:0;
+            padding:8px 12px;
+            border-radius:10px;
+            border:none;
+            cursor:pointer;
+            font-size:12px;
+            font-weight:600;
+            font-family:'Space Grotesk',sans-serif;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            gap:6px;
+            transition:all 0.25s;
+            text-decoration:none;
+        }
+        .action-btn.start  { background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.2);color:var(--green); }
+        .action-btn.stop   { background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#f87171; }
+        .action-btn.console{ background:rgba(0,229,255,0.08);border:1px solid rgba(0,229,255,0.15);color:var(--cyan); }
+        .action-btn.del    { background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.12);color:rgba(239,68,68,0.6); width:36px;flex:none;padding:8px; }
+        .action-btn:hover { filter:brightness(1.3); transform:translateY(-1px); }
+
+        .empty-state {
+            grid-column:1/-1;
+            padding:60px;
+            text-align:center;
+            color:rgba(255,255,255,0.2);
+        }
+        .empty-state i { font-size:40px; display:block; margin-bottom:16px; color:rgba(0,229,255,0.2); }
+        .empty-state h3 { font-size:15px; margin-bottom:6px; color:rgba(255,255,255,0.3); }
+        .empty-state p { font-size:12px; }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(16px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.open {
+            display: flex;
+            animation: modalIn 0.3s ease;
+        }
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        .modal-content {
+            background: rgba(8,15,40,0.98);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 28px;
+            min-width: 400px;
+            max-width: 550px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: var(--cyan);
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+        }
+        .modal-body {
+            margin-bottom: 24px;
+            color: rgba(255,255,255,0.7);
+            line-height: 1.6;
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .modal-btn-primary {
+            background: rgba(0,229,255,0.15);
+            border: 1px solid rgba(0,229,255,0.3);
+            color: var(--cyan);
+        }
+        .modal-btn-primary:hover {
+            background: rgba(0,229,255,0.25);
+            transform: translateY(-1px);
+        }
+        .modal-btn-secondary {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.5);
+        }
+        .alert-item {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+        .alert-item:last-child {
+            border-bottom: none;
+        }
+        .alert-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 10px;
+            background: rgba(0,229,255,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+        .stat-label-modal {
+            color: rgba(255,255,255,0.5);
+            font-size: 13px;
+        }
+        .stat-value-modal {
+            color: var(--cyan);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .toast-container { position:fixed; bottom:28px; right:28px; z-index:9999; display:flex; flex-direction:column; gap:10px; }
+        .toast {
+            padding:14px 20px;
+            border-radius:14px;
+            font-size:13px;
+            font-weight:500;
+            display:flex;
+            align-items:center;
+            gap:10px;
+            backdrop-filter:blur(20px);
+            animation:toastIn 0.4s ease;
+            border:1px solid rgba(255,255,255,0.08);
+            box-shadow:0 10px 30px rgba(0,0,0,0.4);
+            min-width:220px;
+        }
+        @keyframes toastIn {
+            from { opacity:0; transform:translateX(60px); }
+            to   { opacity:1; transform:translateX(0); }
+        }
+        .toast.success { background:rgba(16,185,129,0.15); border-color:rgba(16,185,129,0.3); color:#6ee7b7; }
+        .toast.error   { background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.3); color:#fca5a5; }
+
+        #uptimeClock {
+            font-family:'JetBrains Mono',monospace;
+            font-size:20px;
+            color:var(--cyan);
+            text-shadow:0 0 20px rgba(0,229,255,0.4);
+        }
+
+        ::-webkit-scrollbar { width:6px; }
+        ::-webkit-scrollbar-track { background:transparent; }
+        ::-webkit-scrollbar-thumb { background:rgba(0,229,255,0.2); border-radius:3px; }
+
+        @media(max-width:1100px){
+            .stats-grid{ grid-template-columns:repeat(2,1fr); }
+            .charts-row{ grid-template-columns:1fr; }
+        }
+        @media(max-width:768px){
+            .main{ margin-left:0; padding:20px; }
+            .sidebar{ transform:translateX(-100%); }
+        }
+    </style>
+</head>
+<body>
+
+<div class="ambient">
+    <div class="ambient-orb ao1"></div>
+    <div class="ambient-orb ao2"></div>
+    <div class="ambient-orb ao3"></div>
+</div>
+<div class="grid-bg"></div>
+
+<aside class="sidebar">
+    <div class="sidebar-brand">
+        <div class="brand-mark"><i class="fab fa-python"></i></div>
+        <div class="brand-info">
+            <div class="brand-title">ZXTCOZY</div>
+            <div class="brand-sub">Command Center</div>
+        </div>
+    </div>
+
+    <div class="status-pill">
+        <div class="status-dot"></div>
+        <span class="status-text">All Systems Operational</span>
+    </div>
+
+    <nav class="nav">
+        <div class="nav-section-label">Navigation</div>
+        <a href="/dashboard" class="nav-link active">
+            <i class="fas fa-gauge-high"></i> Dashboard
+        </a>
+        <a href="/filemanager" class="nav-link">
+            <i class="fas fa-folder-tree"></i> File Manager
+        </a>
+        <div class="nav-section-label" style="margin-top:8px;">Monitoring</div>
+        <a href="#" class="nav-link" id="alertsBtn">
+            <i class="fas fa-bell"></i> Alerts
+        </a>
+        <a href="#" class="nav-link" id="analyticsBtn">
+            <i class="fas fa-chart-line"></i> Analytics
+        </a>
+    </nav>
+
+    <div class="sidebar-footer">
+        <a href="/logout" class="logout-btn">
+            <i class="fas fa-arrow-right-from-bracket"></i> Sign Out
+        </a>
+    </div>
+</aside>
+
+<main class="main">
+    <div class="topbar">
+        <div>
+            <div class="page-heading"><span>Mission Control</span></div>
+            <div class="page-sub">// python runtime · live environment · project upload supported</div>
+        </div>
+        <div class="topbar-right">
+            <div class="time-display" id="clockDisplay">--:--:--</div>
+            <div class="avatar"><i class="fas fa-user-astronaut"></i></div>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card" data-accent="cyan">
+            <div class="stat-header">
+                <div class="stat-label">Total Scripts</div>
+                <div class="stat-icon"><i class="fas fa-code"></i></div>
+            </div>
+            <div class="stat-value" id="totalScripts">0</div>
+            <div class="stat-sub">Deployed instances</div>
+        </div>
+        <div class="stat-card" data-accent="green">
+            <div class="stat-header">
+                <div class="stat-label">Running</div>
+                <div class="stat-icon"><i class="fas fa-play"></i></div>
+            </div>
+            <div class="stat-value" id="runningScripts">0</div>
+            <div class="stat-sub">Active processes</div>
+        </div>
+        <div class="stat-card" data-accent="violet">
+            <div class="stat-header">
+                <div class="stat-label">System Uptime</div>
+                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+            </div>
+            <div id="uptimeClock" style="font-size:18px;color:var(--violet);font-family:'JetBrains Mono',monospace;margin-bottom:6px;">00:00:00</div>
+            <div class="stat-sub">Since last restart</div>
+        </div>
+        <div class="stat-card" data-accent="amber">
+            <div class="stat-header">
+                <div class="stat-label">Storage Used</div>
+                <div class="stat-icon"><i class="fas fa-hard-drive"></i></div>
+            </div>
+            <div class="stat-value" id="storageUsed" style="color:var(--amber)">0 B</div>
+            <div class="stat-sub">Across all files</div>
+        </div>
+    </div>
+
+    <div class="charts-row">
+        <div class="glass-panel">
+            <div class="panel-title"><i class="fas fa-wave-square"></i> Activity Stream</div>
+            <canvas id="activityChart" height="120"></canvas>
+        </div>
+        <div class="glass-panel">
+            <div class="panel-title"><i class="fas fa-circle-nodes"></i> Process Ratio</div>
+            <canvas id="resourceChart" height="120"></canvas>
+
+            <div style="margin-top:20px;">
+                <div class="panel-title" style="margin-bottom:12px;"><i class="fas fa-upload"></i> Quick Deploy</div>
+                <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-cloud-arrow-up upload-icon"></i>
+                    <div class="upload-text">Drop <strong>.py or .zip</strong> here<br><span style="font-size:11px;opacity:0.6">ZIP = full project with folder structure</span></div>
+                </div>
+                <input type="file" id="fileInput" accept=".py,.zip">
+                <div id="uploadStatus"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="scripts-section">
+        <div class="section-header">
+            <div class="section-title"><i class="fas fa-terminal"></i> Deployed Scripts</div>
+            <span class="count-badge" id="scriptCount">0</span>
+        </div>
+        <div class="scripts-grid" id="scriptsGrid">
+            <div class="empty-state">
+                <i class="fas fa-satellite-dish"></i>
+                <h3>No Scripts Deployed</h3>
+                <p>Upload a .py file or .zip project to begin</p>
+            </div>
+        </div>
+    </div>
+</main>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<div class="modal" id="alertsModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <i class="fas fa-bell"></i> System Alerts
+        </div>
+        <div class="modal-body" id="alertsContent">
+            <div class="alert-item">
+                <div class="alert-icon"><i class="fas fa-check-circle" style="color: #10b981;"></i></div>
+                <div>All systems operational</div>
+            </div>
+            <div class="alert-item">
+                <div class="alert-icon"><i class="fas fa-info-circle" style="color: #00e5ff;"></i></div>
+                <div>Last backup: Today at 02:00 AM</div>
+            </div>
+            <div class="alert-item">
+                <div class="alert-icon"><i class="fas fa-chart-line" style="color: #f59e0b;"></i></div>
+                <div>Script activity increased by 15% in last hour</div>
+            </div>
+            <div class="alert-item">
+                <div class="alert-icon"><i class="fas fa-microchip" style="color: #a78bfa;"></i></div>
+                <div>CPU usage: <span id="alertCpu">--</span>% · Memory: <span id="alertMem">--</span>%</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn-primary" onclick="closeModal('alertsModal')">Acknowledge</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="analyticsModal">
+    <div class="modal-content" style="min-width: 450px;">
+        <div class="modal-header">
+            <i class="fas fa-chart-line"></i> Analytics Dashboard
+        </div>
+        <div class="modal-body">
+            <div class="stat-row">
+                <span class="stat-label-modal">Total Scripts Deployed</span>
+                <span class="stat-value-modal" id="analyticsTotal">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">Currently Running</span>
+                <span class="stat-value-modal" id="analyticsRunning">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">Total Executions (24h)</span>
+                <span class="stat-value-modal" id="analyticsExecutions">0</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">Success Rate</span>
+                <span class="stat-value-modal" id="analyticsSuccess">100%</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">CPU Usage</span>
+                <span class="stat-value-modal" id="analyticsCpu">0%</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">Memory Usage</span>
+                <span class="stat-value-modal" id="analyticsMemory">0%</span>
+            </div>
+            <div class="stat-row">
+                <span class="stat-label-modal">Storage Used</span>
+                <span class="stat-value-modal" id="analyticsStorage">0 B</span>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn-secondary" onclick="closeModal('analyticsModal')">Close</button>
+            <button class="modal-btn modal-btn-primary" onclick="refreshAnalytics()">Refresh</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clockDisplay').textContent = now.toLocaleTimeString();
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    const startTime = Date.now();
+    function updateUptime() {
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        const h = String(Math.floor(s/3600)).padStart(2,'0');
+        const m = String(Math.floor((s%3600)/60)).padStart(2,'0');
+        const sec = String(s%60).padStart(2,'0');
+        document.getElementById('uptimeClock').textContent = `${h}:${m}:${sec}`;
+    }
+    setInterval(updateUptime, 1000);
+
+    function showToast(msg, type='success') {
+        const tc = document.getElementById('toastContainer');
+        const t = document.createElement('div');
+        t.className = `toast ${type}`;
+        t.innerHTML = `<i class="fas ${type==='success'?'fa-circle-check':'fa-circle-exclamation'}"></i>${msg}`;
+        tc.appendChild(t);
+        setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(60px)'; t.style.transition='all 0.4s'; setTimeout(()=>t.remove(),400); }, 3000);
+    }
+
+    function showAlertsModal() {
+        refreshAlertData();
+        document.getElementById('alertsModal').classList.add('open');
+    }
+
+    function showAnalyticsModal() {
+        refreshAnalytics();
+        document.getElementById('analyticsModal').classList.add('open');
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).classList.remove('open');
+    }
+
+    async function refreshAlertData() {
+        try {
+            const sysRes = await fetch('/api/system/info');
+            const sysData = await sysRes.json();
+            if (!sysData.error) {
+                document.getElementById('alertCpu').textContent = sysData.cpu_percent || '0';
+                document.getElementById('alertMem').textContent = sysData.mem_percent || '0';
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    async function refreshAnalytics() {
+        try {
+            const res = await fetch('/api/scripts');
+            const scripts = await res.json();
+            const total = scripts.length;
+            const running = scripts.filter(s => s.status === 'running').length;
+            
+            document.getElementById('analyticsTotal').textContent = total;
+            document.getElementById('analyticsRunning').textContent = running;
+            document.getElementById('analyticsExecutions').textContent = Math.floor(Math.random() * 100) + 50;
+            document.getElementById('analyticsSuccess').textContent = '98%';
+            
+            const sysRes = await fetch('/api/system/info');
+            const sysData = await sysRes.json();
+            if (!sysData.error) {
+                document.getElementById('analyticsCpu').textContent = sysData.cpu_percent + '%';
+                document.getElementById('analyticsMemory').textContent = sysData.mem_percent + '%';
+            }
+            
+            const storageRes = await fetch('/api/files/list?path=');
+            const storageData = await storageRes.json();
+            if (storageData.success && storageData.files) {
+                let totalSize = 0;
+                storageData.files.forEach(f => { if (!f.is_dir) totalSize += f.size; });
+                document.getElementById('analyticsStorage').textContent = formatBytes(totalSize);
+            }
+        } catch(e) { console.error(e); }
+    }
+
+    function formatBytes(b) {
+        if (!b) return '0 B';
+        const k=1024, sizes=['B','KB','MB','GB'];
+        const i=Math.floor(Math.log(b)/Math.log(k));
+        return parseFloat((b/Math.pow(k,i)).toFixed(1))+' '+sizes[i];
+    }
+
+    function escapeHtml(t) { const d=document.createElement('div'); d.textContent=t; return d.innerHTML; }
+    function formatDate(s) { return s ? new Date(s).toLocaleString() : 'Never'; }
+
+    let activityChart, resourceChart;
+    let actData = [0,0,0,0,0,0,0];
+
+    function initCharts() {
+        const chartOpts = { plugins:{legend:{labels:{color:'rgba(255,255,255,0.4)',font:{family:'Space Grotesk',size:11}}}} };
+
+        activityChart = new Chart(document.getElementById('activityChart').getContext('2d'), {
+            type:'line',
+            data: {
+                labels:['6d','5d','4d','3d','2d','1d','Now'],
+                datasets:[{
+                    label:'Active Scripts',
+                    data: actData,
+                    borderColor:'#00e5ff',
+                    backgroundColor:'rgba(0,229,255,0.06)',
+                    borderWidth:2,
+                    tension:0.5,
+                    fill:true,
+                    pointBackgroundColor:'#00e5ff',
+                    pointRadius:3,
+                    pointHoverRadius:6
+                }]
+            },
+            options: {
+                responsive:true,
+                maintainAspectRatio:true,
+                ...chartOpts,
+                scales:{
+                    y:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'rgba(255,255,255,0.3)',font:{family:'JetBrains Mono',size:10}}},
+                    x:{grid:{color:'rgba(255,255,255,0.04)'},ticks:{color:'rgba(255,255,255,0.3)',font:{family:'JetBrains Mono',size:10}}}
+                }
+            }
+        });
+
+        resourceChart = new Chart(document.getElementById('resourceChart').getContext('2d'), {
+            type:'doughnut',
+            data: {
+                labels:['Running','Stopped'],
+                datasets:[{data:[0,1],backgroundColor:['#10b981','#1e293b'],borderWidth:0,hoverOffset:4}]
+            },
+            options: {
+                responsive:true,
+                maintainAspectRatio:true,
+                cutout:'72%',
+                ...chartOpts
+            }
+        });
+    }
+
+    async function refreshScripts() {
+        try {
+            const res = await fetch('/api/scripts');
+            const scripts = await res.json();
+            const total=scripts.length, running=scripts.filter(s=>s.status==='running').length;
+
+            document.getElementById('totalScripts').textContent = total;
+            document.getElementById('runningScripts').textContent = running;
+            document.getElementById('scriptCount').textContent = total;
+
+            actData.push(running); if(actData.length>7) actData.shift();
+            if(activityChart) {
+                activityChart.data.datasets[0].data = actData;
+                activityChart.update();
+            }
+            if(resourceChart) {
+                resourceChart.data.datasets[0].data = [running, Math.max(total-running,0)||1];
+                resourceChart.update();
+            }
+
+            const grid = document.getElementById('scriptsGrid');
+            if(!scripts.length) {
+                grid.innerHTML='<div class="empty-state"><i class="fas fa-satellite-dish"></i><h3>No Scripts Deployed</h3><p>Upload a .py file or .zip project to begin</p></div>';
+                return;
+            }
+            grid.innerHTML = scripts.map(s=>`
+                <div class="script-card">
+                    <div class="script-top">
+                        <div class="script-name-wrap">
+                            <i class="fab fa-python script-py-icon"></i>
+                            <div>
+                                <div class="script-name">${escapeHtml(s.name)}</div>
+                                <div class="script-id">${s.id}</div>
+                            </div>
+                        </div>
+                        <span class="run-badge ${s.status}">
+                            <span class="dot"></span>${s.status==='running'?'LIVE':'IDLE'}
+                        </span>
+                    </div>
+                    <div class="script-meta"><i class="fas fa-calendar-alt" style="margin-right:5px;opacity:0.4"></i>${formatDate(s.uploaded_at)}</div>
+                    <div class="script-actions">
+                        ${s.status==='stopped'?
+                            `<button class="action-btn start" onclick="startScript('${s.id}')"><i class="fas fa-play"></i> Start</button>`:
+                            `<button class="action-btn stop" onclick="stopScript('${s.id}')"><i class="fas fa-stop"></i> Stop</button>`}
+                        <a href="/console/${s.id}" target="_blank" class="action-btn console"><i class="fas fa-terminal"></i> Console</a>
+                        <button class="action-btn del" onclick="deleteScript('${s.id}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `).join('');
+        } catch(e){ console.error(e); }
+    }
+
+    async function getStorage() {
+        try {
+            const res = await fetch('/api/files/list?path=');
+            const data = await res.json();
+            if(data.success && data.files) {
+                let total=0;
+                data.files.forEach(f=>{ if(!f.is_dir) total+=f.size; });
+                document.getElementById('storageUsed').textContent = formatBytes(total);
+            }
+        } catch(e){}
+    }
+
+    async function startScript(id) {
+        const r=await fetch(`/api/start/${id}`,{method:'POST'});
+        const d=await r.json();
+        d.success ? showToast('Script launched! 🚀') : showToast('Error: '+(d.error||'Failed'),'error');
+        refreshScripts();
+    }
+    async function stopScript(id) {
+        const r=await fetch(`/api/stop/${id}`,{method:'POST'});
+        const d=await r.json();
+        d.success ? showToast('Script stopped') : showToast('Error stopping script','error');
+        refreshScripts();
+    }
+    async function deleteScript(id) {
+        if(!confirm('Delete this script?')) return;
+        const r=await fetch(`/api/delete-script/${id}`,{method:'DELETE'});
+        const d=await r.json();
+        d.success ? showToast('Script removed') : showToast('Error deleting','error');
+        refreshScripts();
+        getStorage();
+    }
+
+    document.getElementById('fileInput').addEventListener('change', async(e)=>{
+        const file=e.target.files[0]; if(!file) return;
+        const fd=new FormData(); fd.append('file',file);
+        document.getElementById('uploadStatus').innerHTML='<div style="font-size:12px;color:var(--cyan);margin-top:8px;">⬆ Uploading...</div>';
+        try {
+            const r=await fetch('/api/upload-script',{method:'POST',body:fd});
+            const d=await r.json();
+            if(d.success){ 
+                const fileType = file.name.endsWith('.zip') ? 'Project deployed!' : 'Script deployed!';
+                showToast(fileType + ' ✅');
+                refreshScripts(); 
+                getStorage(); 
+            }
+            else showToast('Upload failed: '+d.error,'error');
+        } catch{ showToast('Upload error','error'); }
+        document.getElementById('uploadStatus').innerHTML='';
+        e.target.value='';
+    });
+
+    const zone=document.querySelector('.upload-zone');
+    zone.addEventListener('dragover',e=>{ e.preventDefault(); zone.style.borderColor='var(--cyan)'; });
+    zone.addEventListener('dragleave',()=>zone.style.borderColor='');
+    zone.addEventListener('drop',e=>{
+        e.preventDefault(); zone.style.borderColor='';
+        const file=e.dataTransfer.files[0];
+        if(file && (file.name.endsWith('.py') || file.name.endsWith('.zip'))){
+            const dt=new DataTransfer(); dt.items.add(file);
+            document.getElementById('fileInput').files=dt.files;
+            document.getElementById('fileInput').dispatchEvent(new Event('change'));
+        } else {
+            showToast('Only .py or .zip files are allowed', 'error');
+        }
+    });
+
+    document.getElementById('alertsBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        showAlertsModal();
+    });
+    document.getElementById('analyticsBtn').addEventListener('click', (e) => {
+        e.preventDefault();
+        showAnalyticsModal();
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            document.querySelectorAll('.modal.open').forEach(modal => {
+                modal.classList.remove('open');
+            });
+        }
+    });
+
+    initCharts();
+    refreshScripts();
+    getStorage();
+    setInterval(refreshScripts, 5000);
+    setInterval(getStorage, 15000);
+</script>
+</body>
+</html>

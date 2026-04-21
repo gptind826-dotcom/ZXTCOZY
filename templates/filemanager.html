@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZXTCOZY — File Manager</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --cyan: #00e5ff;
+            --violet: #7c3aed;
+            --pink: #f472b6;
+            --green: #10b981;
+            --red: #ef4444;
+            --amber: #f59e0b;
+            --dark: #020617;
+            --surface: rgba(8,15,40,0.7);
+            --border: rgba(0,229,255,0.1);
+            --sidebar-w: 280px;
+        }
+
+        * { margin:0;padding:0;box-sizing:border-box; }
+
+        body {
+            font-family:'Space Grotesk',sans-serif;
+            background:var(--dark);
+            color:#e2e8f0;
+            overflow:hidden;
+            height:100vh;
+        }
+
+        /* ── BACKGROUND ── */
+        .ambient { position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden; }
+        .ao {
+            position:absolute;border-radius:50%;filter:blur(100px);
+            animation:ambDrift ease-in-out infinite;
+        }
+        .ao1{width:600px;height:500px;background:rgba(124,58,237,0.1);top:-150px;left:-100px;animation-duration:22s;}
+        .ao2{width:450px;height:450px;background:rgba(0,229,255,0.07);bottom:-100px;right:-80px;animation-duration:28s;animation-direction:reverse;}
+        .ao3{width:300px;height:300px;background:rgba(244,114,182,0.06);top:40%;left:60%;animation-duration:16s;}
+        @keyframes ambDrift { 0%,100%{transform:translate(0,0);} 33%{transform:translate(50px,30px);} 66%{transform:translate(-20px,60px);} }
+
+        .grid-bg{position:fixed;inset:0;z-index:0;pointer-events:none;
+            background-image:linear-gradient(rgba(0,229,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,0.02) 1px,transparent 1px);
+            background-size:50px 50px;
+        }
+
+        /* ── APP LAYOUT ── */
+        .app {
+            display: flex;
+            height: 100vh;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ── SIDEBAR ── */
+        .sidebar {
+            width: var(--sidebar-w);
+            background: rgba(4,10,28,0.95);
+            border-right: 1px solid var(--border);
+            backdrop-filter: blur(24px);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .sidebar-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .logo-icon {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, var(--violet), var(--cyan));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+        .logo-text {
+            font-size: 18px;
+            font-weight: 700;
+            background: linear-gradient(90deg, #fff, var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .server-search {
+            position: relative;
+            margin-top: 16px;
+        }
+        .server-search input {
+            width: 100%;
+            padding: 10px 12px 10px 36px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: #fff;
+            font-family: inherit;
+            font-size: 13px;
+            outline: none;
+        }
+        .server-search input:focus {
+            border-color: var(--cyan);
+        }
+        .server-search i {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255,255,255,0.3);
+            font-size: 12px;
+        }
+
+        .servers-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .server-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            margin-bottom: 6px;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: transparent;
+            border: none;
+            width: 100%;
+            text-align: left;
+            color: rgba(255,255,255,0.7);
+            font-size: 13px;
+            font-weight: 500;
+            position: relative;
+        }
+        .server-item:hover {
+            background: rgba(0,229,255,0.08);
+        }
+        .server-item.active {
+            background: rgba(0,229,255,0.12);
+            border-left: 2px solid var(--cyan);
+        }
+        .server-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        .server-status.running { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .server-status.stopped { background: var(--red); }
+
+        .sidebar-footer {
+            padding: 16px;
+            border-top: 1px solid var(--border);
+        }
+        .logout-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            color: rgba(239,68,68,0.7);
+            text-decoration: none;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            background: rgba(239,68,68,0.1);
+            color: var(--red);
+        }
+
+        /* ── MAIN CONTENT ── */
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ── TOP BAR ── */
+        .top-bar {
+            background: rgba(4,10,28,0.8);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            backdrop-filter: blur(16px);
+        }
+        .current-server-info {
+            display: flex;
+            align-items: baseline;
+            gap: 12px;
+        }
+        .current-server-name {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--cyan);
+        }
+        .current-server-path {
+            font-size: 12px;
+            color: rgba(255,255,255,0.4);
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-family: inherit;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .btn-primary {
+            background: rgba(0,229,255,0.12);
+            border: 1px solid rgba(0,229,255,0.25);
+            color: var(--cyan);
+        }
+        .btn-primary:hover {
+            background: rgba(0,229,255,0.2);
+            transform: translateY(-1px);
+        }
+        .btn-danger {
+            background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.2);
+            color: var(--red);
+        }
+        .btn-danger:hover {
+            background: rgba(239,68,68,0.2);
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: rgba(255,255,255,0.6);
+        }
+        .btn-secondary:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* ── BREADCRUMB ── */
+        .breadcrumb {
+            padding: 12px 24px;
+            background: rgba(4,10,28,0.6);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .bc-item {
+            color: rgba(0,229,255,0.7);
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .bc-item:hover {
+            color: var(--cyan);
+        }
+        .bc-sep {
+            color: rgba(255,255,255,0.2);
+        }
+
+        /* ── FILE GRID ── */
+        .file-grid {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+        }
+        .files-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+        }
+        .file-card {
+            background: rgba(8,15,40,0.6);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 16px;
+            transition: all 0.2s;
+            position: relative;
+            cursor: pointer;
+        }
+        .file-card:hover {
+            border-color: rgba(0,229,255,0.3);
+            transform: translateY(-2px);
+            background: rgba(8,15,40,0.8);
+        }
+        .file-card.selected {
+            border-color: var(--cyan);
+            background: rgba(0,229,255,0.08);
+        }
+        .file-check {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: var(--cyan);
+            z-index: 2;
+        }
+        .file-icon {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 12px;
+            margin-top: 8px;
+        }
+        .file-name {
+            font-size: 13px;
+            font-weight: 500;
+            text-align: center;
+            word-break: break-all;
+            margin-bottom: 4px;
+        }
+        .file-meta {
+            font-size: 10px;
+            color: rgba(255,255,255,0.3);
+            text-align: center;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .file-menu {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+        }
+        .menu-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.4);
+            cursor: pointer;
+            padding: 6px;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .menu-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: var(--cyan);
+        }
+        .dropdown {
+            position: absolute;
+            right: 0;
+            top: 100%;
+            background: #1a1f2e;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            min-width: 140px;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+        }
+        .dropdown.show {
+            display: block;
+        }
+        .dropdown-item {
+            padding: 10px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.2s;
+            color: rgba(255,255,255,0.7);
+        }
+        .dropdown-item:hover {
+            background: rgba(0,229,255,0.1);
+            color: var(--cyan);
+        }
+        .dropdown-item.danger {
+            color: var(--red);
+        }
+        .dropdown-item.danger:hover {
+            background: rgba(239,68,68,0.1);
+        }
+
+        /* ── EMPTY STATE ── */
+        .empty-state {
+            text-align: center;
+            padding: 80px;
+            color: rgba(255,255,255,0.3);
+        }
+        .empty-state i {
+            font-size: 64px;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        /* ── MODAL ── */
+        .modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(16px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal.open {
+            display: flex;
+        }
+        .modal-content {
+            background: #0d1120;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 28px;
+            min-width: 450px;
+            max-width: 700px;
+        }
+        .modal-header {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--cyan);
+        }
+        .modal-body {
+            margin-bottom: 24px;
+        }
+        .modal-body input, .modal-body textarea {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0,0,0,0.3);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            color: #fff;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            outline: none;
+        }
+        .modal-body textarea {
+            min-height: 300px;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .modal-body input:focus, .modal-body textarea:focus {
+            border-color: var(--cyan);
+        }
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+        }
+
+        /* ── TOAST ── */
+        .toast-container {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .toast {
+            padding: 12px 18px;
+            border-radius: 12px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: slideIn 0.3s ease;
+            background: #1a1f2e;
+            border-left: 3px solid var(--green);
+        }
+        .toast.error {
+            border-left-color: var(--red);
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,229,255,0.2); border-radius: 3px; }
+    </style>
+</head>
+<body>
+<div class="ambient"><div class="ao ao1"></div><div class="ao ao2"></div><div class="ao ao3"></div></div>
+<div class="grid-bg"></div>
+
+<div class="app">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <div class="logo-icon"><i class="fas fa-folder-tree"></i></div>
+                <div class="logo-text">ZXTCOZY</div>
+            </div>
+            <div class="server-search">
+                <i class="fas fa-search"></i>
+                <input type="text" id="serverSearch" placeholder="Search servers..." onkeyup="filterServers()">
+            </div>
+        </div>
+        <div class="servers-list" id="serversList">
+            <div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.3);">
+                <i class="fas fa-spinner fa-spin"></i> Loading...
+            </div>
+        </div>
+        <div class="sidebar-footer">
+            <a href="/dashboard" class="logout-btn" style="color: rgba(255,255,255,0.5); margin-bottom: 8px;">
+                <i class="fas fa-tachometer-alt"></i> Dashboard
+            </a>
+            <a href="/logout" class="logout-btn">
+                <i class="fas fa-sign-out-alt"></i> Sign Out
+            </a>
+        </div>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="main">
+        <div class="top-bar">
+            <div class="current-server-info">
+                <span class="current-server-name" id="currentServerName">—</span>
+                <span class="current-server-path" id="currentServerPath">/</span>
+            </div>
+            <div class="action-buttons" id="actionButtons">
+                <button class="btn btn-primary" onclick="uploadFile()"><i class="fas fa-upload"></i> Upload</button>
+                <button class="btn btn-secondary" onclick="createFolder()"><i class="fas fa-folder-plus"></i> Folder</button>
+                <button class="btn btn-secondary" onclick="createFile()"><i class="fas fa-file-plus"></i> File</button>
+                <button class="btn btn-secondary" id="selectAllBtn" onclick="toggleSelectAll()"><i class="fas fa-check-square"></i> Select</button>
+                <button class="btn btn-danger" id="deleteBtn" onclick="deleteSelected()" style="display:none;"><i class="fas fa-trash"></i> Delete</button>
+                <button class="btn btn-primary" id="archiveBtn" onclick="archiveSelected()" style="display:none;"><i class="fas fa-archive"></i> Archive</button>
+                <button class="btn btn-secondary" id="cancelBtn" onclick="clearSelection()" style="display:none;"><i class="fas fa-times"></i> Cancel</button>
+            </div>
+        </div>
+
+        <div class="breadcrumb" id="breadcrumb"></div>
+
+        <div class="file-grid" id="fileGrid">
+            <div class="empty-state">
+                <i class="fas fa-server"></i>
+                <p>Select a server from the left sidebar</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODALS -->
+<div class="modal" id="editModal">
+    <div class="modal-content">
+        <div class="modal-header">Edit File</div>
+        <div class="modal-body">
+            <textarea id="editContent" rows="15"></textarea>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="saveFile()">Save</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="createModal">
+    <div class="modal-content">
+        <div class="modal-header" id="createModalTitle">Create</div>
+        <div class="modal-body">
+            <input type="text" id="createInput" placeholder="Enter name...">
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeCreateModal()">Cancel</button>
+            <button class="btn btn-primary" id="createConfirmBtn">Create</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast-container" id="toastContainer"></div>
+
+<script>
+    // State
+    let servers = [];
+    let currentServerId = null;
+    let currentPath = '';
+    let files = [];
+    let selectedFiles = new Set();
+    let currentEditPath = null;
+    let createCallback = null;
+
+    // ─────────────────────────────────────────────────────────────
+    // Load Servers
+    // ─────────────────────────────────────────────────────────────
+    async function loadServers() {
+        try {
+            const res = await fetch('/api/scripts');
+            const data = await res.json();
+            servers = data;
+            renderServers();
+            if (servers.length > 0 && !currentServerId) {
+                selectServer(servers[0].id);
+            } else if (servers.length === 0) {
+                document.getElementById('fileGrid').innerHTML = '<div class="empty-state"><i class="fas fa-plus-circle"></i><p>No servers available. Upload a script from Dashboard.</p></div>';
+            }
+        } catch (err) {
+            showToast('Failed to load servers', 'error');
+        }
+    }
+
+    function renderServers() {
+        const container = document.getElementById('serversList');
+        if (!servers.length) {
+            container.innerHTML = '<div style="padding: 20px; text-align: center; color: rgba(255,255,255,0.3);"><i class="fas fa-plus"></i><p style="margin-top: 8px;">No servers</p></div>';
+            return;
+        }
+        container.innerHTML = servers.map(server => `
+            <div class="server-item ${currentServerId === server.id ? 'active' : ''}" onclick="selectServer('${server.id}')">
+                <i class="fas fa-server" style="font-size: 14px;"></i>
+                <span style="flex: 1;">${escapeHtml(server.name)}</span>
+                <div class="server-status ${server.status === 'running' ? 'running' : 'stopped'}"></div>
+            </div>
+        `).join('');
+    }
+
+    function filterServers() {
+        const search = document.getElementById('serverSearch').value.toLowerCase();
+        const items = document.querySelectorAll('.server-item');
+        items.forEach(item => {
+            const name = item.querySelector('span')?.textContent.toLowerCase() || '';
+            item.style.display = name.includes(search) ? 'flex' : 'none';
+        });
+    }
+
+    function selectServer(serverId) {
+        currentServerId = serverId;
+        currentPath = '';
+        selectedFiles.clear();
+        updateSelectionUI();
+        renderServers();
+        loadFiles();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // Load Files
+    // ─────────────────────────────────────────────────────────────
+    async function loadFiles() {
+        if (!currentServerId) return;
+
+        const server = servers.find(s => s.id === currentServerId);
+        document.getElementById('currentServerName').textContent = server?.name || '—';
+        document.getElementById('currentServerPath').textContent = currentPath || '/';
+
+        try {
+            const res = await fetch(`/api/scripts/${currentServerId}/files/list?path=${encodeURIComponent(currentPath)}`);
+            const data = await res.json();
+            if (data.success) {
+                files = data.files || [];
+                renderFiles();
+                renderBreadcrumb();
+            } else {
+                showToast(data.error || 'Failed to load files', 'error');
+            }
+        } catch (err) {
+            showToast('Error loading files', 'error');
+        }
+    }
+
+    function renderFiles() {
+        const container = document.getElementById('fileGrid');
+        if (!files.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <i class="fas fa-folder-open"></i>
+                    <p>This folder is empty</p>
+                    <button class="btn btn-primary" style="margin-top: 16px;" onclick="uploadFile()">
+                        <i class="fas fa-upload"></i> Upload Files
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = `
+            <div class="files-container">
+                ${files.map(file => `
+                    <div class="file-card ${selectedFiles.has(file.path) ? 'selected' : ''}" data-path="${file.path}" ondblclick="openFile('${file.path}', ${file.is_dir})">
+                        <input type="checkbox" class="file-check" ${selectedFiles.has(file.path) ? 'checked' : ''} onclick="event.stopPropagation(); toggleSelect('${file.path}')">
+                        <div class="file-icon">${getFileIcon(file.name, file.is_dir)}</div>
+                        <div class="file-name">${escapeHtml(file.name)}</div>
+                        <div class="file-meta">${file.is_dir ? 'Folder' : formatSize(file.size)}</div>
+                        <div class="file-menu">
+                            <button class="menu-btn" onclick="event.stopPropagation(); toggleMenu(this)"><i class="fas fa-ellipsis-v"></i></button>
+                            <div class="dropdown">
+                                ${!file.is_dir ? '<div class="dropdown-item" onclick="editFile(\'' + file.path + '\')"><i class="fas fa-edit"></i> Edit</div>' : ''}
+                                <div class="dropdown-item" onclick="renameFile(\'${file.path}\')"><i class="fas fa-pencil-alt"></i> Rename</div>
+                                <div class="dropdown-item" onclick="copyPath(\'${file.path}\')"><i class="fas fa-copy"></i> Copy Path</div>
+                                <div class="dropdown-item danger" onclick="deleteFile(\'${file.path}\')"><i class="fas fa-trash"></i> Delete</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    }
+
+    function getFileIcon(filename, isDir) {
+        if (isDir) return '<i class="fas fa-folder" style="color: #58a6ff; font-size: 40px;"></i>';
+        const ext = filename.split('.').pop().toLowerCase();
+        const icons = {
+            py: '<i class="fab fa-python" style="color: #3fb950; font-size: 40px;"></i>',
+            js: '<i class="fab fa-js" style="color: #f7df1e; font-size: 40px;"></i>',
+            html: '<i class="fab fa-html5" style="color: #e34c26; font-size: 40px;"></i>',
+            css: '<i class="fab fa-css3-alt" style="color: #264de4; font-size: 40px;"></i>',
+            json: '<i class="fas fa-brackets-curly" style="color: #58a6ff; font-size: 40px;"></i>',
+            txt: '<i class="fas fa-file-alt" style="color: #6e7681; font-size: 40px;"></i>',
+            md: '<i class="fas fa-markdown" style="color: #6e7681; font-size: 40px;"></i>',
+            zip: '<i class="fas fa-file-archive" style="color: #f0883e; font-size: 40px;"></i>',
+            jpg: '<i class="fas fa-file-image" style="color: #a78bfa; font-size: 40px;"></i>',
+            png: '<i class="fas fa-file-image" style="color: #a78bfa; font-size: 40px;"></i>',
+            gif: '<i class="fas fa-file-image" style="color: #a78bfa; font-size: 40px;"></i>',
+            svg: '<i class="fas fa-file-image" style="color: #a78bfa; font-size: 40px;"></i>',
+            pdf: '<i class="fas fa-file-pdf" style="color: #f85149; font-size: 40px;"></i>',
+            doc: '<i class="fas fa-file-word" style="color: #58a6ff; font-size: 40px;"></i>',
+            xls: '<i class="fas fa-file-excel" style="color: #3fb950; font-size: 40px;"></i>',
+            mp3: '<i class="fas fa-file-audio" style="color: #f59e0b; font-size: 40px;"></i>',
+            mp4: '<i class="fas fa-file-video" style="color: #f59e0b; font-size: 40px;"></i>',
+            sh: '<i class="fas fa-terminal" style="color: #6e7681; font-size: 40px;"></i>',
+            yml: '<i class="fas fa-cog" style="color: #6e7681; font-size: 40px;"></i>',
+            yaml: '<i class="fas fa-cog" style="color: #6e7681; font-size: 40px;"></i>',
+        };
+        return icons[ext] || '<i class="fas fa-file" style="color: #6e7681; font-size: 40px;"></i>';
+    }
+
+    function renderBreadcrumb() {
+        const container = document.getElementById('breadcrumb');
+        if (!currentPath) {
+            container.innerHTML = `<span class="bc-item" onclick="navigateTo('')"><i class="fas fa-home"></i> Root</span>`;
+            return;
+        }
+        const parts = currentPath.split('/');
+        let html = `<span class="bc-item" onclick="navigateTo('')"><i class="fas fa-home"></i> Root</span>`;
+        let accumulated = '';
+        parts.forEach((part, i) => {
+            accumulated += (i > 0 ? '/' : '') + part;
+            html += `<span class="bc-sep">/</span><span class="bc-item" onclick="navigateTo('${accumulated}')">${escapeHtml(part)}</span>`;
+        });
+        container.innerHTML = html;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // File Operations
+    // ─────────────────────────────────────────────────────────────
+    function navigateTo(path) {
+        currentPath = path;
+        selectedFiles.clear();
+        updateSelectionUI();
+        loadFiles();
+    }
+
+    function openFile(path, isDir) {
+        if (isDir) {
+            navigateTo(path);
+        } else {
+            editFile(path);
+        }
+    }
+
+    function toggleSelect(path) {
+        if (selectedFiles.has(path)) {
+            selectedFiles.delete(path);
+        } else {
+            selectedFiles.add(path);
+        }
+        updateSelectionUI();
+        renderFiles();
+    }
+
+    function toggleSelectAll() {
+        if (selectedFiles.size === files.length) {
+            selectedFiles.clear();
+        } else {
+            files.forEach(f => selectedFiles.add(f.path));
+        }
+        updateSelectionUI();
+        renderFiles();
+    }
+
+    function clearSelection() {
+        selectedFiles.clear();
+        updateSelectionUI();
+        renderFiles();
+    }
+
+    function updateSelectionUI() {
+        const count = selectedFiles.size;
+        const selectAllBtn = document.getElementById('selectAllBtn');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const archiveBtn = document.getElementById('archiveBtn');
+        const cancelBtn = document.getElementById('cancelBtn');
+
+        if (count > 0) {
+            selectAllBtn.innerHTML = `<i class="fas fa-check-square"></i> Selected (${count})`;
+            deleteBtn.style.display = 'inline-flex';
+            archiveBtn.style.display = 'inline-flex';
+            cancelBtn.style.display = 'inline-flex';
+        } else {
+            selectAllBtn.innerHTML = `<i class="fas fa-check-square"></i> Select`;
+            deleteBtn.style.display = 'none';
+            archiveBtn.style.display = 'none';
+            cancelBtn.style.display = 'none';
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // File Actions
+    // ─────────────────────────────────────────────────────────────
+    async function uploadFile() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.onchange = async (e) => {
+            const fd = new FormData();
+            fd.append('path', currentPath);
+            for (const file of e.target.files) {
+                fd.append('file', file);
+            }
+            try {
+                const res = await fetch(`/api/scripts/${currentServerId}/files/upload`, { method: 'POST', body: fd });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`${data.uploaded?.length || 0} file(s) uploaded`);
+                    loadFiles();
+                } else {
+                    showToast('Upload failed', 'error');
+                }
+            } catch (err) {
+                showToast('Error uploading', 'error');
+            }
+        };
+        input.click();
+    }
+
+    function createFolder() {
+        openCreateModal('New Folder', 'Enter folder name...', async (name) => {
+            try {
+                const res = await fetch(`/api/scripts/${currentServerId}/files/create-folder`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: currentPath, folder_name: name })
+                });
+                if (res.ok) {
+                    showToast('Folder created');
+                    loadFiles();
+                } else {
+                    showToast('Failed to create folder', 'error');
+                }
+            } catch (err) {
+                showToast('Error', 'error');
+            }
+        });
+    }
+
+    function createFile() {
+        openCreateModal('New File', 'Enter filename (e.g., script.py, data.json)...', async (name) => {
+            try {
+                const res = await fetch(`/api/scripts/${currentServerId}/files/create-file`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ path: currentPath, filename: name, content: '' })
+                });
+                if (res.ok) {
+                    showToast('File created');
+                    loadFiles();
+                } else {
+                    showToast('Failed to create file', 'error');
+                }
+            } catch (err) {
+                showToast('Error', 'error');
+            }
+        });
+    }
+
+    async function editFile(path) {
+        try {
+            const res = await fetch(`/api/scripts/${currentServerId}/files/edit?path=${encodeURIComponent(path)}`);
+            const data = await res.json();
+            if (data.success) {
+                currentEditPath = path;
+                document.getElementById('editContent').value = data.content;
+                document.getElementById('editModal').classList.add('open');
+            } else {
+                showToast('Failed to load file', 'error');
+            }
+        } catch (err) {
+            showToast('Error loading file', 'error');
+        }
+    }
+
+    async function saveFile() {
+        try {
+            const res = await fetch(`/api/scripts/${currentServerId}/files/edit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: currentEditPath, content: document.getElementById('editContent').value })
+            });
+            if (res.ok) {
+                showToast('File saved');
+                closeEditModal();
+                loadFiles();
+            } else {
+                showToast('Save failed', 'error');
+            }
+        } catch (err) {
+            showToast('Error saving', 'error');
+        }
+    }
+
+    async function renameFile(path) {
+        const oldName = path.split('/').pop();
+        openCreateModal('Rename', 'Enter new name...', async (newName) => {
+            try {
+                const res = await fetch(`/api/scripts/${currentServerId}/files/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ old_path: path, new_name: newName })
+                });
+                if (res.ok) {
+                    showToast('Renamed');
+                    loadFiles();
+                } else {
+                    showToast('Rename failed', 'error');
+                }
+            } catch (err) {
+                showToast('Error', 'error');
+            }
+        }, oldName);
+    }
+
+    async function deleteFile(path) {
+        if (!confirm(`Delete "${path.split('/').pop()}"?`)) return;
+        try {
+            const res = await fetch(`/api/scripts/${currentServerId}/files/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+            if (res.ok) {
+                showToast('Deleted');
+                selectedFiles.delete(path);
+                loadFiles();
+            } else {
+                showToast('Delete failed', 'error');
+            }
+        } catch (err) {
+            showToast('Error', 'error');
+        }
+    }
+
+    async function deleteSelected() {
+        if (selectedFiles.size === 0) return;
+        if (!confirm(`Delete ${selectedFiles.size} item(s)?`)) return;
+        for (const path of selectedFiles) {
+            await fetch(`/api/scripts/${currentServerId}/files/delete`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path })
+            });
+        }
+        showToast(`${selectedFiles.size} item(s) deleted`);
+        selectedFiles.clear();
+        updateSelectionUI();
+        loadFiles();
+    }
+
+    async function archiveSelected() {
+        if (selectedFiles.size === 0) return;
+        try {
+            const res = await fetch(`/api/scripts/${currentServerId}/files/zip`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths: Array.from(selectedFiles) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(`${selectedFiles.size} item(s) archived`);
+                selectedFiles.clear();
+                updateSelectionUI();
+                loadFiles();
+            } else {
+                showToast('Archive failed', 'error');
+            }
+        } catch (err) {
+            showToast('Error', 'error');
+        }
+    }
+
+    function copyPath(path) {
+        navigator.clipboard.writeText(path);
+        showToast('Path copied');
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // UI Helpers
+    // ─────────────────────────────────────────────────────────────
+    function toggleMenu(btn) {
+        document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show'));
+        btn.nextElementSibling.classList.toggle('show');
+    }
+
+    function openCreateModal(title, placeholder, callback, defaultValue = '') {
+        document.getElementById('createModalTitle').textContent = title;
+        document.getElementById('createInput').value = defaultValue;
+        document.getElementById('createInput').placeholder = placeholder;
+        createCallback = callback;
+        document.getElementById('createModal').classList.add('open');
+        document.getElementById('createConfirmBtn').onclick = () => {
+            const val = document.getElementById('createInput').value.trim();
+            if (val && createCallback) {
+                createCallback(val);
+            }
+            closeCreateModal();
+        };
+    }
+
+    function closeCreateModal() {
+        document.getElementById('createModal').classList.remove('open');
+        createCallback = null;
+    }
+
+    function closeEditModal() {
+        document.getElementById('editModal').classList.remove('open');
+        currentEditPath = null;
+    }
+
+    function showToast(msg, type = 'success') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerHTML = `<i class="fas ${type === 'success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i> ${msg}`;
+        container.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    function formatSize(bytes) {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // Close dropdowns on click outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.menu-container') && !e.target.closest('.menu-btn')) {
+            document.querySelectorAll('.dropdown.show').forEach(d => d.classList.remove('show'));
+        }
+    });
+
+    // Ctrl+S save in editor
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's' && document.getElementById('editModal').classList.contains('open')) {
+            e.preventDefault();
+            saveFile();
+        }
+    });
+
+    // Initial load
+    loadServers();
+    setInterval(loadServers, 30000);
+</script>
+</body>
+</html>
