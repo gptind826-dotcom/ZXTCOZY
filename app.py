@@ -32,6 +32,24 @@ DATA_FILE     = os.path.join(BASE_DIR, 'scripts_db.json')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(LOGS_FOLDER, exist_ok=True)
 
+# ── PYTHON VERSION DETECTION ───────────────────────────────────────
+# Try to find Python 3.11 or 3.10 for better compatibility
+PYTHON_CMD = None
+for version in ['3.11', '3.10', '3.9', '3']:
+    cmd = f'python{version}'
+    try:
+        result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            PYTHON_CMD = cmd
+            print(f"[Python] Using {cmd} ({result.stdout.strip()})")
+            break
+    except:
+        continue
+
+if not PYTHON_CMD:
+    PYTHON_CMD = sys.executable
+    print(f"[Python] Using default: {PYTHON_CMD}")
+
 # ── IN-MEMORY STATE ──
 running_processes: dict = {}
 scripts_db: dict = {}
@@ -85,7 +103,7 @@ def home():
 def login():
     if request.method == 'POST':
         password = request.form.get('password', '')
-        if password == 'ZXTCOZY ':
+        if password == 'admin123':
             session['logged_in'] = True
             session.permanent = True
             return redirect(url_for('dashboard'))
@@ -145,15 +163,14 @@ def upload_script():
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(script_dir)
-            os.remove(zip_path)  # Remove zip after extraction
+            os.remove(zip_path)
             
             # Find main .py file (entry point)
             main_file = None
             for root, dirs, files in os.walk(script_dir):
                 for f in files:
                     if f.endswith('.py'):
-                        # Prefer main.py, app.py, or first found
-                        if f in ['main.py', 'app.py', 'run.py', 'server.py']:
+                        if f in ['main.py', 'app.py', 'run.py', 'server.py', 'bot.py']:
                             main_file = os.path.join(root, f)
                             break
                         if not main_file:
@@ -178,6 +195,12 @@ def upload_script():
         main_file = script_path
         script_name = filename
     
+    # Create requirements.txt if it doesn't exist (optional)
+    req_file = os.path.join(script_dir, 'requirements.txt')
+    if not os.path.exists(req_file):
+        with open(req_file, 'w') as f:
+            f.write("# Add your dependencies here\n")
+    
     scripts_db[script_id] = {
         'id':          script_id,
         'name':        script_name,
@@ -192,23 +215,20 @@ def upload_script():
     return jsonify({'success': True, 'script_id': script_id, 'name': script_name})
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT-SCOPED FILE MANAGEMENT (per script workspace)
+#  SCRIPT-SCOPED FILE MANAGEMENT
 # ══════════════════════════════════════════════════════════════════
 
 def get_script_workspace(script_id):
-    """Get the workspace directory for a script."""
     if script_id not in scripts_db:
         return None
     script = scripts_db[script_id]
     workspace = script.get('workspace')
     if not workspace or not os.path.exists(workspace):
-        # Fallback to old structure
         workspace = os.path.dirname(script['path'])
         scripts_db[script_id]['workspace'] = workspace
     return workspace
 
 def safe_script_path(script_id, rel_path):
-    """Prevent path traversal for script workspace."""
     workspace = get_script_workspace(script_id)
     if not workspace:
         raise ValueError('Script not found')
@@ -314,42 +334,6 @@ def script_rename_file(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/move', methods=['POST'])
-@login_required
-def script_move_file(script_id):
-    data = request.json or {}
-    try:
-        src = safe_script_path(script_id, data.get('source', ''))
-        dest = safe_script_path(script_id, os.path.join(data.get('destination', ''), os.path.basename(src)))
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    if not os.path.exists(src):
-        return jsonify({'error': 'Source not found'}), 404
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    try:
-        shutil.move(src, dest)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/scripts/<script_id>/files/copy', methods=['POST'])
-@login_required
-def script_copy_file(script_id):
-    data = request.json or {}
-    try:
-        src = safe_script_path(script_id, data.get('source', ''))
-        dest = safe_script_path(script_id, os.path.join(data.get('destination', ''), os.path.basename(src)))
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    if not os.path.exists(src):
-        return jsonify({'error': 'Source not found'}), 404
-    os.makedirs(os.path.dirname(dest), exist_ok=True)
-    try:
-        shutil.copytree(src, dest) if os.path.isdir(src) else shutil.copy2(src, dest)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 @app.route('/api/scripts/<script_id>/files/create-folder', methods=['POST'])
 @login_required
 def script_create_folder(script_id):
@@ -443,7 +427,7 @@ def script_zip_files(script_id):
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT MANAGEMENT — PTY-BASED
+#  SCRIPT MANAGEMENT — PTY-BASED (FIXED FOR PYTHON 3.11)
 # ══════════════════════════════════════════════════════════════════
 
 def _pty_reader(script_id: str, master_fd: int):
@@ -516,7 +500,7 @@ def start_script(script_id):
     _kill_process(script_id)
 
     with open(script['log_file'], 'ab') as f:
-        header = f"\n{'='*60}\nStarted: {datetime.now()}\nScript: {script['name']}\n{'='*60}\n\n"
+        header = f"\n{'='*60}\nStarted: {datetime.now()}\nScript: {script['name']}\nPython: {PYTHON_CMD}\n{'='*60}\n\n"
         f.write(header.encode())
 
     try:
@@ -526,8 +510,9 @@ def start_script(script_id):
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
 
+        # Use the compatible Python version
         process = subprocess.Popen(
-            [sys.executable, '-u', script['path']],
+            [PYTHON_CMD, '-u', script['path']],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -602,14 +587,12 @@ def delete_script(script_id):
         return jsonify({'error': 'Script not found'}), 404
     _kill_process(script_id)
     script = scripts_db.pop(script_id)
-    # Delete workspace directory
     workspace = script.get('workspace')
     if workspace and os.path.exists(workspace):
         try:
             shutil.rmtree(workspace)
         except Exception:
             pass
-    # Delete log file
     log_file = script.get('log_file')
     if log_file and os.path.exists(log_file):
         try:
@@ -727,8 +710,13 @@ def install_requirements(script_id):
         return jsonify({'error': 'No requirements.txt found in project'}), 404
 
     try:
+        # First upgrade pip
+        subprocess.run([PYTHON_CMD, '-m', 'pip', 'install', '--upgrade', 'pip'], 
+                      capture_output=True, text=True, timeout=60, cwd=workspace)
+        
+        # Install requirements with compatibility flags
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', '-r', req_file],
+            [PYTHON_CMD, '-m', 'pip', 'install', '-r', req_file, '--no-cache-dir', '--prefer-binary'],
             capture_output=True, text=True, timeout=300, cwd=workspace
         )
         with open(script['log_file'], 'a') as f:
@@ -799,7 +787,7 @@ def install_package():
         return jsonify({'error': 'Invalid package name'}), 400
     try:
         result = subprocess.run(
-            [sys.executable, '-m', 'pip', 'install', package],
+            [PYTHON_CMD, '-m', 'pip', 'install', package, '--prefer-binary'],
             capture_output=True, text=True, timeout=180
         )
         return jsonify({'success': result.returncode == 0,
@@ -813,7 +801,7 @@ def install_package():
 @login_required
 def list_packages():
     try:
-        result = subprocess.run([sys.executable, '-m', 'pip', 'list', '--format=columns'],
+        result = subprocess.run([PYTHON_CMD, '-m', 'pip', 'list', '--format=columns'],
                                 capture_output=True, text=True, timeout=15)
         return jsonify({'success': True, 'packages': result.stdout})
     except Exception as e:
@@ -842,115 +830,14 @@ def system_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ── FILE MANAGEMENT (global uploads) ──
-def safe_path(base, rel):
-    full = os.path.realpath(os.path.join(base, rel))
-    if not full.startswith(os.path.realpath(base)):
-        raise ValueError('Path traversal detected')
-    return full
-
-@app.route('/api/files/list')
-@login_required
-def list_files():
-    path = request.args.get('path', '')
-    try:
-        base_path = safe_path(UPLOAD_FOLDER, path)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-
-    if not os.path.exists(base_path):
-        return jsonify({'error': 'Path not found'}), 404
-
-    try:
-        items = []
-        for item in sorted(os.listdir(base_path)):
-            item_path = os.path.join(base_path, item)
-            is_dir = os.path.isdir(item_path)
-            stat = os.stat(item_path)
-            items.append({
-                'name': item,
-                'path': os.path.join(path, item).lstrip('/') if path else item,
-                'is_dir': is_dir,
-                'size': stat.st_size if not is_dir else 0,
-                'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M'),
-                'extension': os.path.splitext(item)[1].lower() if not is_dir else ''
-            })
-        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
-        return jsonify({'success': True, 'current_path': path, 'files': items})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/files/upload', methods=['POST'])
-@login_required
-def upload_file_global():
-    path = request.form.get('path', '')
-    try:
-        target = safe_path(UPLOAD_FOLDER, path)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    os.makedirs(target, exist_ok=True)
-
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    uploaded = []
-    for file in request.files.getlist('file'):
-        if not file.filename:
-            continue
-        filename = secure_filename(file.filename)
-        if not filename:
-            continue
-        file.save(os.path.join(target, filename))
-        uploaded.append(filename)
-
-    return jsonify({'success': True, 'uploaded': uploaded})
-
-@app.route('/api/files/delete', methods=['POST'])
-@login_required
-def delete_file_global():
-    data = request.json or {}
-    path = data.get('path', '')
-    try:
-        full = safe_path(UPLOAD_FOLDER, path)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-
-    if not os.path.exists(full):
-        return jsonify({'error': 'Not found'}), 404
-    try:
-        shutil.rmtree(full) if os.path.isdir(full) else os.remove(full)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/files/rename', methods=['POST'])
-@login_required
-def rename_file_global():
-    data = request.json or {}
-    old_path = data.get('old_path', '')
-    new_name = secure_filename(data.get('new_name', ''))
-    if not new_name:
-        return jsonify({'error': 'Invalid name'}), 400
-    try:
-        old_full = safe_path(UPLOAD_FOLDER, old_path)
-        new_full = os.path.join(os.path.dirname(old_full), new_name)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    if not os.path.exists(old_full):
-        return jsonify({'error': 'Not found'}), 404
-    try:
-        os.rename(old_full, new_full)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
 if __name__ == '__main__':
     print('\n' + '='*60)
-    print('🚀  ZXTCOZY  Started!')
+    print('🚀 ZXTCOZY Started!')
     print('='*60)
     print(f'   URL      : http://localhost:5000')
-    print(f'   Password : ZXTCOZY ')
+    print(f'   Password : admin123')
     print(f'   Uploads  : {UPLOAD_FOLDER}')
     print(f'   Logs     : {LOGS_FOLDER}')
+    print(f'   Python   : {PYTHON_CMD}')
     print('='*60 + '\n')
     app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
