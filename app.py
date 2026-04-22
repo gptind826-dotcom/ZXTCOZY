@@ -20,20 +20,22 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'ZXTCOZY -super-secret-key-change-in-production-2024'
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for projects
+app.secret_key = os.environ.get('SECRET_KEY', 'ZXTCOZY-super-secret-key-2024')
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
 
 # ── PATHS ──────────────────────────────────────────────────────────
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-LOGS_FOLDER   = os.path.join(BASE_DIR, 'logs')
-DATA_FILE     = os.path.join(BASE_DIR, 'scripts_db.json')
+LOGS_FOLDER = os.path.join(BASE_DIR, 'logs')
+DATA_FILE = os.path.join(BASE_DIR, 'scripts_db.json')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(LOGS_FOLDER, exist_ok=True)
 
+# ── RAILWAY PORT ───────────────────────────────────────────────────
+PORT = int(os.environ.get('PORT', 5000))
+
 # ── PYTHON VERSION DETECTION ───────────────────────────────────────
-# Try to find Python 3.11 or 3.10 for better compatibility
 PYTHON_CMD = None
 for version in ['3.11', '3.10', '3.9', '3']:
     cmd = f'python{version}'
@@ -41,7 +43,7 @@ for version in ['3.11', '3.10', '3.9', '3']:
         result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             PYTHON_CMD = cmd
-            print(f"[Python] Using {cmd} ({result.stdout.strip()})")
+            print(f"[Python] Using {cmd}")
             break
     except:
         continue
@@ -57,7 +59,9 @@ scripts_db: dict = {}
 # ── PERSIST / RESTORE DB ──
 def save_db():
     try:
-        safe = {sid: {k: v for k, v in s.items() if k not in ['process', 'master_fd', 'lock']} for sid, s in scripts_db.items()}
+        safe = {}
+        for sid, s in scripts_db.items():
+            safe[sid] = {k: v for k, v in s.items() if k not in ['process', 'master_fd', 'lock']}
         with open(DATA_FILE, 'w') as f:
             json.dump(safe, f, indent=2)
     except Exception as e:
@@ -72,7 +76,7 @@ def load_db():
             data = json.load(f)
         for sid, s in data.items():
             s['status'] = 'stopped'
-            s['pid']    = None
+            s['pid'] = None
             scripts_db[sid] = s
         print(f'[DB] Loaded {len(scripts_db)} scripts')
     except Exception as e:
@@ -94,7 +98,10 @@ def login_required(f):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'py', 'txt', 'json', 'yml', 'yaml', 'md', 'html', 'css', 'js', 'sh', 'csv', 'ini', 'cfg', 'toml', 'zip'}
 
-# ── ROUTES ──
+# ══════════════════════════════════════════════════════════════════
+#  PAGE ROUTES
+# ══════════════════════════════════════════════════════════════════
+
 @app.route('/')
 def home():
     return redirect(url_for('dashboard') if session.get('logged_in') else url_for('login'))
@@ -109,11 +116,6 @@ def login():
             return redirect(url_for('dashboard'))
         return render_template('login.html', error='Invalid access key')
     return render_template('login.html')
-
-@app.route('/logout')
-def logout():
-    session.clear()
-    return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
@@ -133,7 +135,7 @@ def console(script_id):
     return render_template('console.html', script_id=script_id)
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT UPLOAD - Supports both .py and .zip (projects)
+#  SCRIPT UPLOAD API
 # ══════════════════════════════════════════════════════════════════
 
 @app.route('/api/upload-script', methods=['POST'])
@@ -148,24 +150,20 @@ def upload_script():
     filename = secure_filename(file.filename)
     script_id = uuid.uuid4().hex[:8]
     
-    # Create script directory
     script_dir = os.path.join(UPLOAD_FOLDER, script_id)
     os.makedirs(script_dir, exist_ok=True)
     
     file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     
     if file_ext == 'zip':
-        # Handle ZIP upload - extract entire project
         zip_path = os.path.join(script_dir, filename)
         file.save(zip_path)
         
-        # Extract zip
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(script_dir)
             os.remove(zip_path)
             
-            # Find main .py file (entry point)
             main_file = None
             for root, dirs, files in os.walk(script_dir):
                 for f in files:
@@ -189,33 +187,26 @@ def upload_script():
             shutil.rmtree(script_dir)
             return jsonify({'error': 'Invalid zip file'}), 400
     else:
-        # Single .py file upload
         script_path = os.path.join(script_dir, filename)
         file.save(script_path)
         main_file = script_path
         script_name = filename
     
-    # Create requirements.txt if it doesn't exist (optional)
-    req_file = os.path.join(script_dir, 'requirements.txt')
-    if not os.path.exists(req_file):
-        with open(req_file, 'w') as f:
-            f.write("# Add your dependencies here\n")
-    
     scripts_db[script_id] = {
-        'id':          script_id,
-        'name':        script_name,
-        'path':        main_file,
-        'workspace':   script_dir,
-        'status':      'stopped',
+        'id': script_id,
+        'name': script_name,
+        'path': main_file,
+        'workspace': script_dir,
+        'status': 'stopped',
         'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'pid':         None,
-        'log_file':    os.path.join(LOGS_FOLDER, f'{script_id}.log')
+        'pid': None,
+        'log_file': os.path.join(LOGS_FOLDER, f'{script_id}.log')
     }
     save_db()
     return jsonify({'success': True, 'script_id': script_id, 'name': script_name})
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT-SCOPED FILE MANAGEMENT
+#  SCRIPT WORKSPACE FILE MANAGEMENT
 # ══════════════════════════════════════════════════════════════════
 
 def get_script_workspace(script_id):
@@ -427,7 +418,7 @@ def script_zip_files(script_id):
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT MANAGEMENT — PTY-BASED (FIXED FOR PYTHON 3.11)
+#  SCRIPT MANAGEMENT (PTY-BASED)
 # ══════════════════════════════════════════════════════════════════
 
 def _pty_reader(script_id: str, master_fd: int):
@@ -454,8 +445,8 @@ def _pty_reader(script_id: str, master_fd: int):
                     log.flush()
                     with info['lock']:
                         info['buffer'] += data.decode('utf-8', errors='replace')
-                        if len(info['buffer']) > 200_000:
-                            info['buffer'] = info['buffer'][-200_000:]
+                        if len(info['buffer']) > 200000:
+                            info['buffer'] = info['buffer'][-200000:]
                 proc = info.get('process')
                 if proc and proc.poll() is not None:
                     try:
@@ -510,7 +501,6 @@ def start_script(script_id):
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
 
-        # Use the compatible Python version
         process = subprocess.Popen(
             [PYTHON_CMD, '-u', script['path']],
             stdin=slave_fd,
@@ -639,8 +629,8 @@ def get_logs(script_id):
     try:
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
-        if len(content) > 100_000:
-            content = '...(truncated)...\n' + content[-100_000:]
+        if len(content) > 100000:
+            content = '...(truncated)...\n' + content[-100000:]
         return jsonify({'logs': content, 'live': False})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -710,11 +700,9 @@ def install_requirements(script_id):
         return jsonify({'error': 'No requirements.txt found in project'}), 404
 
     try:
-        # First upgrade pip
         subprocess.run([PYTHON_CMD, '-m', 'pip', 'install', '--upgrade', 'pip'], 
                       capture_output=True, text=True, timeout=60, cwd=workspace)
         
-        # Install requirements with compatibility flags
         result = subprocess.run(
             [PYTHON_CMD, '-m', 'pip', 'install', '-r', req_file, '--no-cache-dir', '--prefer-binary'],
             capture_output=True, text=True, timeout=300, cwd=workspace
@@ -733,10 +721,7 @@ def install_requirements(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ══════════════════════════════════════════════════════════════════
-#  TERMINAL COMMAND API
-# ══════════════════════════════════════════════════════════════════
-
+# ── TERMINAL COMMANDS ──
 BLOCKED_PATTERNS = [
     r'\brm\s+-rf\s+/', r'\bsudo\b', r'\bmkfs\b',
     r'\bdd\s+if=', r':\(\)\s*\{', r'\bpasswd\b',
@@ -830,14 +815,120 @@ def system_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ── FILE MANAGEMENT (global uploads) ──
+def safe_path(base, rel):
+    full = os.path.realpath(os.path.join(base, rel))
+    if not full.startswith(os.path.realpath(base)):
+        raise ValueError('Path traversal detected')
+    return full
+
+@app.route('/api/files/list')
+@login_required
+def list_files():
+    path = request.args.get('path', '')
+    try:
+        base_path = safe_path(UPLOAD_FOLDER, path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.exists(base_path):
+        return jsonify({'error': 'Path not found'}), 404
+
+    try:
+        items = []
+        for item in sorted(os.listdir(base_path)):
+            item_path = os.path.join(base_path, item)
+            is_dir = os.path.isdir(item_path)
+            stat = os.stat(item_path)
+            items.append({
+                'name': item,
+                'path': os.path.join(path, item).lstrip('/') if path else item,
+                'is_dir': is_dir,
+                'size': stat.st_size if not is_dir else 0,
+                'modified': datetime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M'),
+                'extension': os.path.splitext(item)[1].lower() if not is_dir else ''
+            })
+        items.sort(key=lambda x: (not x['is_dir'], x['name'].lower()))
+        return jsonify({'success': True, 'current_path': path, 'files': items})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/files/upload', methods=['POST'])
+@login_required
+def upload_file_global():
+    path = request.form.get('path', '')
+    try:
+        target = safe_path(UPLOAD_FOLDER, path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+    os.makedirs(target, exist_ok=True)
+
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+
+    uploaded = []
+    for file in request.files.getlist('file'):
+        if not file.filename:
+            continue
+        filename = secure_filename(file.filename)
+        if not filename:
+            continue
+        file.save(os.path.join(target, filename))
+        uploaded.append(filename)
+
+    return jsonify({'success': True, 'uploaded': uploaded})
+
+@app.route('/api/files/delete', methods=['POST'])
+@login_required
+def delete_file_global():
+    data = request.json or {}
+    path = data.get('path', '')
+    try:
+        full = safe_path(UPLOAD_FOLDER, path)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+
+    if not os.path.exists(full):
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        shutil.rmtree(full) if os.path.isdir(full) else os.remove(full)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/files/rename', methods=['POST'])
+@login_required
+def rename_file_global():
+    data = request.json or {}
+    old_path = data.get('old_path', '')
+    new_name = secure_filename(data.get('new_name', ''))
+    if not new_name:
+        return jsonify({'error': 'Invalid name'}), 400
+    try:
+        old_full = safe_path(UPLOAD_FOLDER, old_path)
+        new_full = os.path.join(os.path.dirname(old_full), new_name)
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+    if not os.path.exists(old_full):
+        return jsonify({'error': 'Not found'}), 404
+    try:
+        os.rename(old_full, new_full)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════════
+#  MAIN - RAILWAY READY
+# ══════════════════════════════════════════════════════════════════
+
 if __name__ == '__main__':
     print('\n' + '='*60)
-    print('🚀 ZXTCOZY Started!')
+    print('🚀 ZXTCOZY Started on Railway!')
     print('='*60)
-    print(f'   URL      : http://localhost:5000')
-    print(f'   Password : admin123')
-    print(f'   Uploads  : {UPLOAD_FOLDER}')
-    print(f'   Logs     : {LOGS_FOLDER}')
-    print(f'   Python   : {PYTHON_CMD}')
+    print(f'   Port    : {PORT}')
+    print(f'   Password: admin123')
+    print(f'   Uploads : {UPLOAD_FOLDER}')
+    print(f'   Logs    : {LOGS_FOLDER}')
+    print(f'   Python  : {PYTHON_CMD}')
     print('='*60 + '\n')
-    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
+    app.run(host='0.0.0.0', port=PORT, debug=False)
