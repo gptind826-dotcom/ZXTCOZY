@@ -20,55 +20,28 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'ZXTCOZY-super-secret-key-2024')
-app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024
+app.secret_key = 'ZXTCOZY -super-secret-key-change-in-production-2024'
+app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for projects
 
 # ── PATHS ──────────────────────────────────────────────────────────
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-LOGS_FOLDER = os.path.join(BASE_DIR, 'logs')
-DATA_FILE = os.path.join(BASE_DIR, 'scripts_db.json')
+BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, 'servers')
+LOGS_FOLDER   = os.path.join(BASE_DIR, 'logs')
+DATA_FILE     = os.path.join(BASE_DIR, 'servers_db.json')
 
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(LOGS_FOLDER, exist_ok=True)
 
-# ── RAILWAY PORT ───────────────────────────────────────────────────
-PORT = int(os.environ.get('PORT', 5000))
-
-# ── PYTHON VERSION DETECTION FOR TELEGRAM BOT COMPATIBILITY ────────
-PYTHON_CMD = None
-# Prefer Python 3.11 or 3.10 for telegram bot compatibility
-for version in ['3.11', '3.10', '3.9']:
-    cmd = f'python{version}'
-    try:
-        result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            PYTHON_CMD = cmd
-            print(f"[Python] Using {cmd} for bot execution")
-            break
-    except:
-        continue
-
-if not PYTHON_CMD:
-    # Try to find any python3
-    try:
-        result = subprocess.run(['python3', '--version'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0:
-            PYTHON_CMD = 'python3'
-            print(f"[Python] Using python3 for bot execution")
-    except:
-        PYTHON_CMD = sys.executable
-        print(f"[Python] Using default: {PYTHON_CMD}")
-
 # ── IN-MEMORY STATE ──
-running_processes: dict = {}
-scripts_db: dict = {}
+# Track processes by server_id
+running_processes = {}
+servers_db = {}
 
 # ── PERSIST / RESTORE DB ──
 def save_db():
     try:
         safe = {}
-        for sid, s in scripts_db.items():
+        for sid, s in servers_db.items():
             safe[sid] = {k: v for k, v in s.items() if k not in ['process', 'master_fd', 'lock']}
         with open(DATA_FILE, 'w') as f:
             json.dump(safe, f, indent=2)
@@ -76,7 +49,7 @@ def save_db():
         print(f'[DB] Save error: {e}')
 
 def load_db():
-    global scripts_db
+    global servers_db
     if not os.path.exists(DATA_FILE):
         return
     try:
@@ -85,14 +58,14 @@ def load_db():
         for sid, s in data.items():
             s['status'] = 'stopped'
             s['pid'] = None
-            scripts_db[sid] = s
-        print(f'[DB] Loaded {len(scripts_db)} scripts')
+            servers_db[sid] = s
+        print(f'[DB] Loaded {len(servers_db)} servers')
     except Exception as e:
         print(f'[DB] Load error: {e}')
 
 load_db()
 
-# ── AUTH ──
+# ── AUTH (Your credential system) ──
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -103,13 +76,7 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'py', 'txt', 'json', 'yml', 'yaml', 'md', 'html', 'css', 'js', 'sh', 'csv', 'ini', 'cfg', 'toml', 'zip'}
-
-# ══════════════════════════════════════════════════════════════════
-#  PAGE ROUTES
-# ══════════════════════════════════════════════════════════════════
-
+# ── ROUTES ──
 @app.route('/')
 def home():
     return redirect(url_for('dashboard') if session.get('logged_in') else url_for('login'))
@@ -125,6 +92,22 @@ def login():
         return render_template('login.html', error='Invalid access key')
     return render_template('login.html')
 
+@app.route('/logout')
+def logout():
+    # Stop all running servers
+    for sid, info in list(running_processes.items()):
+        try:
+            proc = info.get('process')
+            if proc and proc.poll() is None:
+                proc.terminate()
+                time.sleep(0.5)
+                if proc.poll() is None:
+                    proc.kill()
+        except:
+            pass
+    session.clear()
+    return redirect(url_for('login'))
+
 @app.route('/dashboard')
 @login_required
 def dashboard():
@@ -135,16 +118,53 @@ def dashboard():
 def filemanager():
     return render_template('filemanager.html')
 
-@app.route('/console/<script_id>')
+@app.route('/console/<server_id>')
 @login_required
-def console(script_id):
-    if script_id not in scripts_db:
+def console(server_id):
+    if server_id not in servers_db:
         return redirect(url_for('dashboard'))
-    return render_template('console.html', script_id=script_id)
+    return render_template('console.html', script_id=server_id)
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT UPLOAD API (Supports Telegram Bots)
+#  SERVER UPLOAD - Supports .py and .zip (full projects)
 # ══════════════════════════════════════════════════════════════════
+
+def find_main_file(path):
+    """Find the main Python file in a directory"""
+    common_files = ["main.py", "app.py", "bot.py", "server.py", "index.py", "start.py", "run.py"]
+    for filename in common_files:
+        if os.path.exists(os.path.join(path, filename)):
+            return filename
+    
+    # If no common file found, look for any Python file with __main__
+    for root, dirs, files in os.walk(path):
+        for file in files:
+            if file.endswith('.py') and not file.startswith('_'):
+                filepath = os.path.join(root, file)
+                try:
+                    with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read()
+                        if '__main__' in content or 'if __name__' in content:
+                            return os.path.relpath(filepath, path)
+                except:
+                    continue
+    return None
+
+def install_requirements(path):
+    """Install requirements.txt if exists"""
+    req_file = os.path.join(path, "requirements.txt")
+    if os.path.exists(req_file):
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install", "-r", req_file],
+                capture_output=True, text=True, timeout=300
+            )
+            return result.returncode == 0, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return False, "", "Installation timed out"
+        except Exception as e:
+            return False, "", str(e)
+    return True, "", "No requirements.txt found"
 
 @app.route('/api/upload-script', methods=['POST'])
 @login_required
@@ -156,86 +176,92 @@ def upload_script():
         return jsonify({'error': 'No file selected'}), 400
     
     filename = secure_filename(file.filename)
-    script_id = uuid.uuid4().hex[:8]
+    server_id = uuid.uuid4().hex[:8]
     
-    script_dir = os.path.join(UPLOAD_FOLDER, script_id)
-    os.makedirs(script_dir, exist_ok=True)
+    # Create server directory
+    server_dir = os.path.join(UPLOAD_FOLDER, server_id)
+    os.makedirs(server_dir, exist_ok=True)
     
     file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
     
     if file_ext == 'zip':
-        zip_path = os.path.join(script_dir, filename)
+        # Handle ZIP upload - extract entire project
+        zip_path = os.path.join(server_dir, filename)
         file.save(zip_path)
         
+        # Extract zip
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(script_dir)
-            os.remove(zip_path)
+                zip_ref.extractall(server_dir)
+            os.remove(zip_path)  # Remove zip after extraction
             
-            main_file = None
-            for root, dirs, files in os.walk(script_dir):
-                for f in files:
-                    if f.endswith('.py'):
-                        if f in ['main.py', 'app.py', 'run.py', 'server.py', 'bot.py']:
-                            main_file = os.path.join(root, f)
-                            break
-                        if not main_file:
-                            main_file = os.path.join(root, f)
-                if main_file:
-                    break
+            # Find main .py file
+            main_file = find_main_file(server_dir)
             
             if not main_file:
-                shutil.rmtree(script_dir)
-                return jsonify({'error': 'No .py file found in zip'}), 400
+                # Create a default test server
+                main_file = "server.py"
+                with open(os.path.join(server_dir, main_file), 'w') as f:
+                    f.write('''
+from flask import Flask
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return '<h1>Server is Running!</h1><p>Upload your project files via File Manager.</p>'
+
+@app.route('/health')
+def health():
+    return 'OK'
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+''')
             
-            # Check for requirements.txt and install if found
-            req_file = os.path.join(script_dir, 'requirements.txt')
-            if os.path.exists(req_file):
-                print(f"[Bot] Found requirements.txt in {script_id}")
+            # Install requirements
+            install_requirements(server_dir)
             
             project_name = filename.replace('.zip', '')
-            script_name = f"{project_name}/{os.path.basename(main_file)}"
+            server_name = f"{project_name}"
             
         except zipfile.BadZipFile:
-            shutil.rmtree(script_dir)
+            shutil.rmtree(server_dir)
             return jsonify({'error': 'Invalid zip file'}), 400
     else:
-        script_path = os.path.join(script_dir, filename)
-        file.save(script_path)
-        main_file = script_path
-        script_name = filename
+        # Single .py file upload
+        file.save(os.path.join(server_dir, filename))
+        main_file = filename
+        server_name = filename
     
-    scripts_db[script_id] = {
-        'id': script_id,
-        'name': script_name,
-        'path': main_file,
-        'workspace': script_dir,
-        'status': 'stopped',
+    servers_db[server_id] = {
+        'id':          server_id,
+        'name':        server_name,
+        'path':        os.path.join(server_dir, main_file),
+        'workspace':   server_dir,
+        'status':      'stopped',
         'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'pid': None,
-        'log_file': os.path.join(LOGS_FOLDER, f'{script_id}.log')
+        'pid':         None,
+        'log_file':    os.path.join(LOGS_FOLDER, f'{server_id}.log')
     }
     save_db()
-    return jsonify({'success': True, 'script_id': script_id, 'name': script_name})
+    return jsonify({'success': True, 'script_id': server_id, 'name': server_name})
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT WORKSPACE FILE MANAGEMENT
+#  SERVER-SCOPED FILE MANAGEMENT
 # ══════════════════════════════════════════════════════════════════
 
-def get_script_workspace(script_id):
-    if script_id not in scripts_db:
+def get_server_workspace(server_id):
+    if server_id not in servers_db:
         return None
-    script = scripts_db[script_id]
-    workspace = script.get('workspace')
-    if not workspace or not os.path.exists(workspace):
-        workspace = os.path.dirname(script['path'])
-        scripts_db[script_id]['workspace'] = workspace
-    return workspace
+    return servers_db[server_id]['workspace']
 
-def safe_script_path(script_id, rel_path):
-    workspace = get_script_workspace(script_id)
+def safe_server_path(server_id, rel_path):
+    workspace = get_server_workspace(server_id)
     if not workspace:
-        raise ValueError('Script not found')
+        raise ValueError('Server not found')
     if not rel_path:
         return workspace
     full = os.path.realpath(os.path.join(workspace, rel_path))
@@ -243,12 +269,12 @@ def safe_script_path(script_id, rel_path):
         raise ValueError('Path traversal detected')
     return full
 
-@app.route('/api/scripts/<script_id>/files/list')
+@app.route('/api/scripts/<server_id>/files/list')
 @login_required
-def script_list_files(script_id):
+def server_list_files(server_id):
     path = request.args.get('path', '')
     try:
-        base_path = safe_script_path(script_id, path)
+        base_path = safe_server_path(server_id, path)
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
 
@@ -274,12 +300,12 @@ def script_list_files(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/upload', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/upload', methods=['POST'])
 @login_required
-def script_upload_file(script_id):
+def server_upload_file(server_id):
     path = request.form.get('path', '')
     try:
-        target = safe_script_path(script_id, path)
+        target = safe_server_path(server_id, path)
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
     os.makedirs(target, exist_ok=True)
@@ -299,13 +325,13 @@ def script_upload_file(script_id):
 
     return jsonify({'success': True, 'uploaded': uploaded})
 
-@app.route('/api/scripts/<script_id>/files/delete', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/delete', methods=['POST'])
 @login_required
-def script_delete_file(script_id):
+def server_delete_file(server_id):
     data = request.json or {}
     path = data.get('path', '')
     try:
-        full = safe_script_path(script_id, path)
+        full = safe_server_path(server_id, path)
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
 
@@ -317,16 +343,16 @@ def script_delete_file(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/rename', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/rename', methods=['POST'])
 @login_required
-def script_rename_file(script_id):
+def server_rename_file(server_id):
     data = request.json or {}
     old_path = data.get('old_path', '')
     new_name = secure_filename(data.get('new_name', ''))
     if not new_name:
         return jsonify({'error': 'Invalid name'}), 400
     try:
-        old_full = safe_script_path(script_id, old_path)
+        old_full = safe_server_path(server_id, old_path)
         new_full = os.path.join(os.path.dirname(old_full), new_name)
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
@@ -338,15 +364,51 @@ def script_rename_file(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/create-folder', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/move', methods=['POST'])
 @login_required
-def script_create_folder(script_id):
+def server_move_file(server_id):
+    data = request.json or {}
+    try:
+        src = safe_server_path(server_id, data.get('source', ''))
+        dest = safe_server_path(server_id, os.path.join(data.get('destination', ''), os.path.basename(src)))
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+    if not os.path.exists(src):
+        return jsonify({'error': 'Source not found'}), 404
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        shutil.move(src, dest)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scripts/<server_id>/files/copy', methods=['POST'])
+@login_required
+def server_copy_file(server_id):
+    data = request.json or {}
+    try:
+        src = safe_server_path(server_id, data.get('source', ''))
+        dest = safe_server_path(server_id, os.path.join(data.get('destination', ''), os.path.basename(src)))
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 400
+    if not os.path.exists(src):
+        return jsonify({'error': 'Source not found'}), 404
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    try:
+        shutil.copytree(src, dest) if os.path.isdir(src) else shutil.copy2(src, dest)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/scripts/<server_id>/files/create-folder', methods=['POST'])
+@login_required
+def server_create_folder(server_id):
     data = request.json or {}
     folder_name = secure_filename(data.get('folder_name', ''))
     if not folder_name:
         return jsonify({'error': 'Invalid folder name'}), 400
     try:
-        full = safe_script_path(script_id, os.path.join(data.get('path', ''), folder_name))
+        full = safe_server_path(server_id, os.path.join(data.get('path', ''), folder_name))
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
     try:
@@ -355,15 +417,15 @@ def script_create_folder(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/create-file', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/create-file', methods=['POST'])
 @login_required
-def script_create_file(script_id):
+def server_create_file(server_id):
     data = request.json or {}
     filename = secure_filename(data.get('filename', ''))
     if not filename:
         return jsonify({'error': 'Invalid filename'}), 400
     try:
-        full = safe_script_path(script_id, os.path.join(data.get('path', ''), filename))
+        full = safe_server_path(server_id, os.path.join(data.get('path', ''), filename))
     except ValueError:
         return jsonify({'error': 'Invalid path'}), 400
     try:
@@ -373,13 +435,13 @@ def script_create_file(script_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/edit', methods=['GET', 'POST'])
+@app.route('/api/scripts/<server_id>/files/edit', methods=['GET', 'POST'])
 @login_required
-def script_edit_file(script_id):
+def server_edit_file(server_id):
     if request.method == 'GET':
         path = request.args.get('path', '')
         try:
-            full = safe_script_path(script_id, path)
+            full = safe_server_path(server_id, path)
         except ValueError:
             return jsonify({'error': 'Invalid path'}), 400
         if not os.path.isfile(full):
@@ -393,7 +455,7 @@ def script_edit_file(script_id):
         data = request.json or {}
         path = data.get('path', '')
         try:
-            full = safe_script_path(script_id, path)
+            full = safe_server_path(server_id, path)
         except ValueError:
             return jsonify({'error': 'Invalid path'}), 400
         try:
@@ -403,22 +465,22 @@ def script_edit_file(script_id):
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
-@app.route('/api/scripts/<script_id>/files/zip', methods=['POST'])
+@app.route('/api/scripts/<server_id>/files/zip', methods=['POST'])
 @login_required
-def script_zip_files(script_id):
+def server_zip_files(server_id):
     data = request.json or {}
     paths = data.get('paths', [])
     if not paths:
         return jsonify({'error': 'No files selected'}), 400
     
-    workspace = get_script_workspace(script_id)
+    workspace = get_server_workspace(server_id)
     zip_name = f'archive_{uuid.uuid4().hex[:8]}.zip'
     zip_path = os.path.join(workspace, zip_name)
     
     try:
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for p in paths:
-                full = safe_script_path(script_id, p)
+                full = safe_server_path(server_id, p)
                 if os.path.isdir(full):
                     for root, _, files in os.walk(full):
                         for fn in files:
@@ -431,38 +493,15 @@ def script_zip_files(script_id):
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
-#  TELEGRAM BOT SPECIFIC HANDLING
+#  SERVER MANAGEMENT — PTY-BASED (supports interactive input)
 # ══════════════════════════════════════════════════════════════════
 
-def install_bot_dependencies(workspace):
-    """Install requirements for Telegram bot"""
-    req_file = os.path.join(workspace, 'requirements.txt')
-    if os.path.exists(req_file):
-        try:
-            # Install specific versions that work together
-            subprocess.run([PYTHON_CMD, '-m', 'pip', 'install', '--upgrade', 'pip'], 
-                          capture_output=True, timeout=60)
-            result = subprocess.run(
-                [PYTHON_CMD, '-m', 'pip', 'install', '-r', req_file, '--no-cache-dir', '--prefer-binary'],
-                capture_output=True, text=True, timeout=300, cwd=workspace
-            )
-            print(f"[Bot] Dependencies installed: {result.returncode}")
-            return result.returncode == 0
-        except Exception as e:
-            print(f"[Bot] Dependency install error: {e}")
-            return False
-    return True
-
-# ══════════════════════════════════════════════════════════════════
-#  SCRIPT MANAGEMENT (PTY-BASED FOR TELEGRAM BOTS)
-# ══════════════════════════════════════════════════════════════════
-
-def _pty_reader(script_id: str, master_fd: int):
-    info = running_processes.get(script_id)
-    script = scripts_db.get(script_id)
-    if not info or not script:
+def _pty_reader(server_id: str, master_fd: int):
+    info = running_processes.get(server_id)
+    server = servers_db.get(server_id)
+    if not info or not server:
         return
-    log_path = script['log_file']
+    log_path = server['log_file']
     try:
         with open(log_path, 'ab') as log:
             while True:
@@ -481,8 +520,8 @@ def _pty_reader(script_id: str, master_fd: int):
                     log.flush()
                     with info['lock']:
                         info['buffer'] += data.decode('utf-8', errors='replace')
-                        if len(info['buffer']) > 200000:
-                            info['buffer'] = info['buffer'][-200000:]
+                        if len(info['buffer']) > 200_000:
+                            info['buffer'] = info['buffer'][-200_000:]
                 proc = info.get('process')
                 if proc and proc.poll() is not None:
                     try:
@@ -501,36 +540,40 @@ def _pty_reader(script_id: str, master_fd: int):
                         pass
                     break
     except Exception as e:
-        print(f'[PTY reader {script_id}] error: {e}')
+        print(f'[PTY reader {server_id}] error: {e}')
     finally:
         try:
             os.close(master_fd)
         except OSError:
             pass
-        if script_id in running_processes:
-            running_processes[script_id]['master_fd'] = None
-        if script_id in scripts_db:
-            scripts_db[script_id]['status'] = 'stopped'
-            scripts_db[script_id]['pid'] = None
+        if server_id in running_processes:
+            running_processes[server_id]['master_fd'] = None
+        if server_id in servers_db:
+            servers_db[server_id]['status'] = 'stopped'
+            servers_db[server_id]['pid'] = None
         save_db()
 
-@app.route('/api/start/<script_id>', methods=['POST'])
+@app.route('/api/start/<server_id>', methods=['POST'])
 @login_required
-def start_script(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
-    script = scripts_db[script_id]
+def start_server(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
+    server = servers_db[server_id]
 
-    if not os.path.exists(script['path']):
-        return jsonify({'error': 'Script file missing from disk'}), 404
+    if not os.path.exists(server['path']):
+        return jsonify({'error': 'Server file missing from disk'}), 404
 
-    _kill_process(script_id)
-    
-    # Install dependencies before starting
-    install_bot_dependencies(script['workspace'])
+    # Kill existing if any
+    info = running_processes.get(server_id)
+    if info:
+        proc = info.get('process')
+        if proc and proc.poll() is None:
+            return jsonify({'error': 'Server is already running'}), 400
+        else:
+            running_processes.pop(server_id, None)
 
-    with open(script['log_file'], 'ab') as f:
-        header = f"\n{'='*60}\nStarted: {datetime.now()}\nScript: {script['name']}\nPython: {PYTHON_CMD}\n{'='*60}\n\n"
+    with open(server['log_file'], 'ab') as f:
+        header = f"\n{'='*60}\nStarted: {datetime.now()}\nServer: {server['name']}\n{'='*60}\n\n"
         f.write(header.encode())
 
     try:
@@ -540,19 +583,17 @@ def start_script(script_id):
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
 
-        # Set environment variables for Telegram bot
-        env = os.environ.copy()
-        env['PYTHONUNBUFFERED'] = '1'
+        # Set working directory to server workspace
+        cwd = server['workspace']
         
         process = subprocess.Popen(
-            [PYTHON_CMD, '-u', script['path']],
+            [sys.executable, '-u', server['path']],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
-            cwd=os.path.dirname(script['path']),
+            cwd=cwd,
             close_fds=True,
-            start_new_session=True,
-            env=env
+            start_new_session=True
         )
         os.close(slave_fd)
 
@@ -562,72 +603,84 @@ def start_script(script_id):
             'buffer': '',
             'lock': threading.Lock(),
         }
-        running_processes[script_id] = info
+        running_processes[server_id] = info
 
-        t = threading.Thread(target=_pty_reader, args=(script_id, master_fd), daemon=True)
+        t = threading.Thread(target=_pty_reader, args=(server_id, master_fd), daemon=True)
         t.start()
 
-        script['status'] = 'running'
-        script['pid'] = process.pid
-        script['started_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        server['status'] = 'running'
+        server['pid'] = process.pid
+        server['started_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         save_db()
 
         return jsonify({'success': True, 'pid': process.pid})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-def _kill_process(script_id: str):
-    info = running_processes.pop(script_id, None)
-    if not info:
-        return
-    proc = info.get('process')
-    if proc:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            pass
-        try:
-            proc.wait(timeout=4)
-        except subprocess.TimeoutExpired:
+@app.route('/api/stop/<server_id>', methods=['POST'])
+@login_required
+def stop_server(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
+    
+    info = running_processes.pop(server_id, None)
+    if info:
+        proc = info.get('process')
+        if proc:
             try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             except (ProcessLookupError, PermissionError):
                 pass
-    mfd = info.get('master_fd')
-    if mfd:
-        try:
-            os.close(mfd)
-        except OSError:
-            pass
-    if script_id in scripts_db:
-        scripts_db[script_id]['status'] = 'stopped'
-        scripts_db[script_id]['pid'] = None
-
-@app.route('/api/stop/<script_id>', methods=['POST'])
-@login_required
-def stop_script(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
-    _kill_process(script_id)
-    with open(scripts_db[script_id]['log_file'], 'ab') as f:
+            try:
+                proc.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except (ProcessLookupError, PermissionError):
+                    pass
+        mfd = info.get('master_fd')
+        if mfd:
+            try:
+                os.close(mfd)
+            except OSError:
+                pass
+    
+    if server_id in servers_db:
+        servers_db[server_id]['status'] = 'stopped'
+        servers_db[server_id]['pid'] = None
+    
+    with open(servers_db[server_id]['log_file'], 'ab') as f:
         f.write(f"\n{'='*60}\nStopped: {datetime.now()}\n{'='*60}\n\n".encode())
+    
     save_db()
     return jsonify({'success': True})
 
-@app.route('/api/delete-script/<script_id>', methods=['DELETE'])
+@app.route('/api/delete-script/<server_id>', methods=['DELETE'])
 @login_required
-def delete_script(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
-    _kill_process(script_id)
-    script = scripts_db.pop(script_id)
-    workspace = script.get('workspace')
+def delete_server(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
+    
+    # Stop if running
+    info = running_processes.pop(server_id, None)
+    if info:
+        proc = info.get('process')
+        if proc:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except:
+                pass
+    
+    server = servers_db.pop(server_id)
+    # Delete workspace directory
+    workspace = server.get('workspace')
     if workspace and os.path.exists(workspace):
         try:
             shutil.rmtree(workspace)
-        except Exception:
-            pass
-    log_file = script.get('log_file')
+        except Exception as e:
+            print(f"Error deleting workspace: {e}")
+    # Delete log file
+    log_file = server.get('log_file')
     if log_file and os.path.exists(log_file):
         try:
             os.remove(log_file)
@@ -638,58 +691,59 @@ def delete_script(script_id):
 
 @app.route('/api/scripts')
 @login_required
-def get_scripts():
-    for sid, script in scripts_db.items():
+def get_servers():
+    # Sync status with actual process state
+    for sid, server in servers_db.items():
         info = running_processes.get(sid)
         if info:
             proc = info.get('process')
             if proc and proc.poll() is None:
-                script['status'] = 'running'
+                server['status'] = 'running'
             else:
-                script['status'] = 'stopped'
-                script['pid'] = None
+                server['status'] = 'stopped'
+                server['pid'] = None
                 running_processes.pop(sid, None)
         else:
-            script['status'] = 'stopped'
-            script['pid'] = None
-    return jsonify(list(scripts_db.values()))
+            server['status'] = 'stopped'
+            server['pid'] = None
+    return jsonify(list(servers_db.values()))
 
 # ── LOGS ──
-@app.route('/api/logs/<script_id>')
+@app.route('/api/logs/<server_id>')
 @login_required
-def get_logs(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
+def get_logs(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
 
-    info = running_processes.get(script_id)
+    info = running_processes.get(server_id)
     if info:
         with info['lock']:
             buf = info['buffer']
         return jsonify({'logs': buf, 'live': True})
 
-    log_file = scripts_db[script_id]['log_file']
+    log_file = servers_db[server_id]['log_file']
     if not os.path.exists(log_file):
         return jsonify({'logs': '', 'live': False})
     try:
         with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
             content = f.read()
-        if len(content) > 100000:
-            content = '...(truncated)...\n' + content[-100000:]
+        if len(content) > 100_000:
+            content = '...(truncated)...\n' + content[-100_000:]
         return jsonify({'logs': content, 'live': False})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/logs/stream/<script_id>')
+@app.route('/api/logs/stream/<server_id>')
 @login_required
-def stream_logs(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
+def stream_logs(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
 
     def generate():
         sent = 0
         yield 'retry: 1000\n\n'
         while True:
-            info = running_processes.get(script_id)
+            info = running_processes.get(server_id)
             if info:
                 with info['lock']:
                     buf = info['buffer']
@@ -698,8 +752,8 @@ def stream_logs(script_id):
                     sent = len(buf)
                     for line in chunk.splitlines():
                         yield f'data: {json.dumps(line)}\n\n'
-            script = scripts_db.get(script_id)
-            if script and script['status'] == 'stopped' and script_id not in running_processes:
+            server = servers_db.get(server_id)
+            if server and server['status'] == 'stopped' and server_id not in running_processes:
                 yield 'event: stopped\ndata: {}\n\n'
                 break
             time.sleep(0.3)
@@ -707,15 +761,15 @@ def stream_logs(script_id):
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
-# ── STDIN FOR TELEGRAM BOT INTERACTION ──
-@app.route('/api/stdin/<script_id>', methods=['POST'])
+# ── STDIN ──
+@app.route('/api/stdin/<server_id>', methods=['POST'])
 @login_required
-def send_stdin(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
-    info = running_processes.get(script_id)
+def send_stdin(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
+    info = running_processes.get(server_id)
     if not info:
-        return jsonify({'error': 'Script is not running'}), 400
+        return jsonify({'error': 'Server is not running'}), 400
     mfd = info.get('master_fd')
     if mfd is None:
         return jsonify({'error': 'PTY not available'}), 500
@@ -731,41 +785,30 @@ def send_stdin(script_id):
         return jsonify({'error': str(e)}), 500
 
 # ── INSTALL REQUIREMENTS ──
-@app.route('/api/install-requirements/<script_id>', methods=['POST'])
+@app.route('/api/install-requirements/<server_id>', methods=['POST'])
 @login_required
-def install_requirements(script_id):
-    if script_id not in scripts_db:
-        return jsonify({'error': 'Script not found'}), 404
-    script = scripts_db[script_id]
-    workspace = get_script_workspace(script_id)
-    req_file = os.path.join(workspace, 'requirements.txt')
+def install_requirements_route(server_id):
+    if server_id not in servers_db:
+        return jsonify({'error': 'Server not found'}), 404
+    server = servers_db[server_id]
+    workspace = server['workspace']
+    
+    success, stdout, stderr = install_requirements(workspace)
+    
+    # Write to log
+    with open(server['log_file'], 'a') as f:
+        f.write(f'\n--- Installing Requirements ---\n')
+        f.write(stdout or '')
+        if stderr:
+            f.write(stderr)
+        f.write(f'\n--- Done ---\n\n')
+    
+    return jsonify({'success': success, 'output': stdout, 'error': stderr})
 
-    if not os.path.exists(req_file):
-        return jsonify({'error': 'No requirements.txt found in project'}), 404
+# ══════════════════════════════════════════════════════════════════
+#  TERMINAL COMMAND API
+# ══════════════════════════════════════════════════════════════════
 
-    try:
-        subprocess.run([PYTHON_CMD, '-m', 'pip', 'install', '--upgrade', 'pip'], 
-                      capture_output=True, text=True, timeout=60, cwd=workspace)
-        
-        result = subprocess.run(
-            [PYTHON_CMD, '-m', 'pip', 'install', '-r', req_file, '--no-cache-dir', '--prefer-binary'],
-            capture_output=True, text=True, timeout=300, cwd=workspace
-        )
-        with open(script['log_file'], 'a') as f:
-            f.write(f'\n--- Installing Requirements ---\n')
-            f.write(result.stdout or '')
-            if result.stderr:
-                f.write(result.stderr)
-            f.write(f'\n--- Done (exit {result.returncode}) ---\n\n')
-        return jsonify({'success': result.returncode == 0,
-                        'output': result.stdout,
-                        'error': result.stderr})
-    except subprocess.TimeoutExpired:
-        return jsonify({'error': 'pip install timed out (5 min)'}), 500
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ── TERMINAL COMMANDS ──
 BLOCKED_PATTERNS = [
     r'\brm\s+-rf\s+/', r'\bsudo\b', r'\bmkfs\b',
     r'\bdd\s+if=', r':\(\)\s*\{', r'\bpasswd\b',
@@ -790,7 +833,7 @@ def run_command():
     if is_dangerous(command):
         return jsonify({'error': 'Command blocked for security reasons'}), 403
 
-    cwd = get_script_workspace(sid) if sid and sid in scripts_db else UPLOAD_FOLDER
+    cwd = servers_db[sid]['workspace'] if sid and sid in servers_db else UPLOAD_FOLDER
 
     try:
         result = subprocess.run(
@@ -816,7 +859,7 @@ def install_package():
         return jsonify({'error': 'Invalid package name'}), 400
     try:
         result = subprocess.run(
-            [PYTHON_CMD, '-m', 'pip', 'install', package, '--prefer-binary'],
+            [sys.executable, '-m', 'pip', 'install', package],
             capture_output=True, text=True, timeout=180
         )
         return jsonify({'success': result.returncode == 0,
@@ -830,7 +873,7 @@ def install_package():
 @login_required
 def list_packages():
     try:
-        result = subprocess.run([PYTHON_CMD, '-m', 'pip', 'list', '--format=columns'],
+        result = subprocess.run([sys.executable, '-m', 'pip', 'list', '--format=columns'],
                                 capture_output=True, text=True, timeout=15)
         return jsonify({'success': True, 'packages': result.stdout})
     except Exception as e:
@@ -859,7 +902,7 @@ def system_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ── FILE MANAGEMENT (global uploads) ──
+# ── GLOBAL FILE MANAGEMENT (for dashboard stats) ──
 def safe_path(base, rel):
     full = os.path.realpath(os.path.join(base, rel))
     if not full.startswith(os.path.realpath(base)):
@@ -868,7 +911,7 @@ def safe_path(base, rel):
 
 @app.route('/api/files/list')
 @login_required
-def list_files():
+def list_files_global():
     path = request.args.get('path', '')
     try:
         base_path = safe_path(UPLOAD_FOLDER, path)
@@ -897,82 +940,16 @@ def list_files():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/files/upload', methods=['POST'])
-@login_required
-def upload_file_global():
-    path = request.form.get('path', '')
-    try:
-        target = safe_path(UPLOAD_FOLDER, path)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    os.makedirs(target, exist_ok=True)
-
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-
-    uploaded = []
-    for file in request.files.getlist('file'):
-        if not file.filename:
-            continue
-        filename = secure_filename(file.filename)
-        if not filename:
-            continue
-        file.save(os.path.join(target, filename))
-        uploaded.append(filename)
-
-    return jsonify({'success': True, 'uploaded': uploaded})
-
-@app.route('/api/files/delete', methods=['POST'])
-@login_required
-def delete_file_global():
-    data = request.json or {}
-    path = data.get('path', '')
-    try:
-        full = safe_path(UPLOAD_FOLDER, path)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-
-    if not os.path.exists(full):
-        return jsonify({'error': 'Not found'}), 404
-    try:
-        shutil.rmtree(full) if os.path.isdir(full) else os.remove(full)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/files/rename', methods=['POST'])
-@login_required
-def rename_file_global():
-    data = request.json or {}
-    old_path = data.get('old_path', '')
-    new_name = secure_filename(data.get('new_name', ''))
-    if not new_name:
-        return jsonify({'error': 'Invalid name'}), 400
-    try:
-        old_full = safe_path(UPLOAD_FOLDER, old_path)
-        new_full = os.path.join(os.path.dirname(old_full), new_name)
-    except ValueError:
-        return jsonify({'error': 'Invalid path'}), 400
-    if not os.path.exists(old_full):
-        return jsonify({'error': 'Not found'}), 404
-    try:
-        os.rename(old_full, new_full)
-        return jsonify({'success': True})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ══════════════════════════════════════════════════════════════════
-#  MAIN - RAILWAY READY
-# ══════════════════════════════════════════════════════════════════
-
 if __name__ == '__main__':
+    # Create templates folder if needed
+    os.makedirs("templates", exist_ok=True)
+    
     print('\n' + '='*60)
-    print('🚀 ZXTCOZY Started on Railway!')
+    print('🚀  ZXTCOZY  Server Hosting Platform Started!')
     print('='*60)
-    print(f'   Port    : {PORT}')
-    print(f'   Password: admin123')
-    print(f'   Uploads : {UPLOAD_FOLDER}')
-    print(f'   Logs    : {LOGS_FOLDER}')
-    print(f'   Python  : {PYTHON_CMD}')
+    print(f'   URL      : http://localhost:5000')
+    print(f'   Password : admin123')
+    print(f'   Servers  : {UPLOAD_FOLDER}')
+    print(f'   Logs     : {LOGS_FOLDER}')
     print('='*60 + '\n')
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
