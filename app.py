@@ -24,13 +24,15 @@ app.secret_key = os.environ.get('SECRET_KEY', 'ZXTCOZY-super-secret-key-change-i
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for projects
 
 # ── PATHS ──────────────────────────────────────────────────────────
-BASE_DIR      = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'servers')
-LOGS_FOLDER   = os.path.join(BASE_DIR, 'logs')
-DATA_FILE     = os.path.join(BASE_DIR, 'servers_db.json')
+LOGS_FOLDER = os.path.join(BASE_DIR, 'logs')
+DATA_FILE = os.path.join(BASE_DIR, 'servers_db.json')
 
+# Ensure directories exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(LOGS_FOLDER, exist_ok=True)
+os.makedirs("templates", exist_ok=True)
 
 # ── IN-MEMORY STATE ──
 running_processes = {}
@@ -616,7 +618,7 @@ def start_server(server_id):
 
 @app.route('/api/stop/<server_id>', methods=['POST'])
 @login_required
-def stop_server(server_id):
+def stop_server_route(server_id):
     if server_id not in servers_db:
         return jsonify({'error': 'Server not found'}), 404
     
@@ -654,7 +656,7 @@ def stop_server(server_id):
 
 @app.route('/api/delete-script/<server_id>', methods=['DELETE'])
 @login_required
-def delete_server(server_id):
+def delete_server_route(server_id):
     if server_id not in servers_db:
         return jsonify({'error': 'Server not found'}), 404
     
