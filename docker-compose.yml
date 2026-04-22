@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  zxtcozy:
+    build: .
+    container_name: zxtcozy
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./bot_data:/app/bot_data
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
+    command: python app.py
