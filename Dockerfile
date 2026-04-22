@@ -1,37 +1,51 @@
-# Use Python 3.11 for better compatibility
-FROM python:3.11-slim
+FROM ubuntu:22.04
 
-# Install build dependencies
+# Install Python 3.11 from deadsnakes (more reliable)
 RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository -y ppa:deadsnakes/ppa \
+    && apt-get update \
+    && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
+    python3.11-distutils \
     gcc \
     g++ \
     make \
-    python3-dev \
     libffi-dev \
     libssl-dev \
-    libc6-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
+# Install pip for Python 3.11
+RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.11
+
+# Set Python 3.11 as default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
 WORKDIR /app
 
-# Copy requirements first for better caching
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --prefer-binary -r requirements.txt
+RUN python3.11 -m pip install --upgrade pip && \
+    python3.11 -m pip install --no-cache-dir \
+    Flask==2.3.3 \
+    Werkzeug==2.3.0 \
+    requests==2.31.0 \
+    aiohttp==3.8.6 \
+    python-telegram-bot==13.15 \
+    blackboxprotobuf==1.0.1 \
+    pycryptodome==3.19.0 \
+    python-dotenv==1.0.0 \
+    psutil==5.9.6
 
-# Copy application code
 COPY . .
 
-# Create necessary directories
 RUN mkdir -p uploads logs
 
-# Expose port
 EXPOSE 5000
 
-# Set environment variables
 ENV PYTHONUNBUFFERED=1
-ENV FLASK_APP=app.py
 
-# Run the application
-CMD ["python", "app.py"]
+CMD ["python3.11", "app.py"]
