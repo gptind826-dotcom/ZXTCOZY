@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'ZXTCOZY-super-secret-key-change-in-production-2024')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for projects
+app.config['UPLOAD_FOLDER'] = 'servers'
 
 # ── PATHS ──────────────────────────────────────────────────────────
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -66,7 +67,7 @@ def load_db():
 
 load_db()
 
-# ── AUTH (Your credential system) ──
+# ── AUTH ──
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -95,7 +96,6 @@ def login():
 
 @app.route('/logout')
 def logout():
-    # Stop all running servers
     for sid, info in list(running_processes.items()):
         try:
             proc = info.get('process')
@@ -127,7 +127,7 @@ def console(server_id):
     return render_template('console.html', script_id=server_id)
 
 # ══════════════════════════════════════════════════════════════════
-#  SERVER UPLOAD - Supports .py and .zip (full projects)
+#  SERVER UPLOAD - FIXED VERSION
 # ══════════════════════════════════════════════════════════════════
 
 def find_main_file(path):
@@ -137,7 +137,6 @@ def find_main_file(path):
         if os.path.exists(os.path.join(path, filename)):
             return filename
     
-    # If no common file found, look for any Python file with __main__
     for root, dirs, files in os.walk(path):
         for file in files:
             if file.endswith('.py') and not file.startswith('_'):
@@ -161,8 +160,6 @@ def install_requirements(path):
                 capture_output=True, text=True, timeout=300
             )
             return result.returncode == 0, result.stdout, result.stderr
-        except subprocess.TimeoutExpired:
-            return False, "", "Installation timed out"
         except Exception as e:
             return False, "", str(e)
     return True, "", "No requirements.txt found"
@@ -170,39 +167,52 @@ def install_requirements(path):
 @app.route('/api/upload-script', methods=['POST'])
 @login_required
 def upload_script():
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
-    file = request.files['file']
-    if not file.filename:
-        return jsonify({'error': 'No file selected'}), 400
-    
-    filename = secure_filename(file.filename)
-    server_id = uuid.uuid4().hex[:8]
-    
-    # Create server directory
-    server_dir = os.path.join(UPLOAD_FOLDER, server_id)
-    os.makedirs(server_dir, exist_ok=True)
-    
-    file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
-    
-    if file_ext == 'zip':
-        # Handle ZIP upload - extract entire project
-        zip_path = os.path.join(server_dir, filename)
-        file.save(zip_path)
+    try:
+        # Check if file exists in request
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file uploaded'}), 400
         
-        # Extract zip
-        try:
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(server_dir)
-            os.remove(zip_path)
+        file = request.files['file']
+        
+        # Check if filename is empty
+        if not file or not file.filename:
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Secure the filename
+        original_filename = file.filename
+        filename = secure_filename(original_filename)
+        if not filename:
+            return jsonify({'error': 'Invalid filename'}), 400
+        
+        # Generate unique server ID
+        server_id = uuid.uuid4().hex[:8]
+        
+        # Create server directory
+        server_dir = os.path.join(UPLOAD_FOLDER, server_id)
+        os.makedirs(server_dir, exist_ok=True)
+        
+        # Check file extension
+        file_ext = filename.rsplit('.', 1)[1].lower() if '.' in filename else ''
+        
+        if file_ext == 'zip':
+            # Handle ZIP upload
+            zip_path = os.path.join(server_dir, filename)
+            file.save(zip_path)
             
-            # Find main .py file
-            main_file = find_main_file(server_dir)
-            
-            if not main_file:
-                main_file = "server.py"
-                with open(os.path.join(server_dir, main_file), 'w') as f:
-                    f.write('''
+            # Extract zip
+            try:
+                with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                    zip_ref.extractall(server_dir)
+                os.remove(zip_path)
+                
+                # Find main .py file
+                main_file = find_main_file(server_dir)
+                
+                if not main_file:
+                    # Create default server file
+                    main_file = "server.py"
+                    with open(os.path.join(server_dir, main_file), 'w') as f:
+                        f.write('''
 from flask import Flask
 import os
 
@@ -220,34 +230,56 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
     app.run(host='0.0.0.0', port=port)
 ''')
-            
-            # Install requirements
-            install_requirements(server_dir)
-            
-            project_name = filename.replace('.zip', '')
-            server_name = f"{project_name}"
-            
-        except zipfile.BadZipFile:
+                
+                # Install requirements
+                install_requirements(server_dir)
+                
+                project_name = filename.replace('.zip', '')
+                server_name = project_name
+                
+            except zipfile.BadZipFile:
+                shutil.rmtree(server_dir)
+                return jsonify({'error': 'Invalid zip file'}), 400
+            except Exception as e:
+                shutil.rmtree(server_dir)
+                return jsonify({'error': f'Extraction error: {str(e)}'}), 400
+                
+        elif file_ext == 'py':
+            # Single Python file
+            file_path = os.path.join(server_dir, filename)
+            file.save(file_path)
+            main_file = filename
+            server_name = filename
+        else:
             shutil.rmtree(server_dir)
-            return jsonify({'error': 'Invalid zip file'}), 400
-    else:
-        # Single .py file upload
-        file.save(os.path.join(server_dir, filename))
-        main_file = filename
-        server_name = filename
-    
-    servers_db[server_id] = {
-        'id':          server_id,
-        'name':        server_name,
-        'path':        os.path.join(server_dir, main_file),
-        'workspace':   server_dir,
-        'status':      'stopped',
-        'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'pid':         None,
-        'log_file':    os.path.join(LOGS_FOLDER, f'{server_id}.log')
-    }
-    save_db()
-    return jsonify({'success': True, 'script_id': server_id, 'name': server_name})
+            return jsonify({'error': 'Only .py and .zip files are allowed'}), 400
+        
+        # Save server info
+        servers_db[server_id] = {
+            'id': server_id,
+            'name': server_name,
+            'path': os.path.join(server_dir, main_file),
+            'workspace': server_dir,
+            'status': 'stopped',
+            'uploaded_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'pid': None,
+            'log_file': os.path.join(LOGS_FOLDER, f'{server_id}.log')
+        }
+        save_db()
+        
+        print(f"[UPLOAD] Success: {server_name} -> {server_id}")
+        return jsonify({
+            'success': True, 
+            'script_id': server_id, 
+            'name': server_name,
+            'message': f'Successfully uploaded {server_name}'
+        })
+        
+    except Exception as e:
+        print(f"[UPLOAD ERROR] {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
 #  SERVER-SCOPED FILE MANAGEMENT
@@ -563,7 +595,6 @@ def start_server(server_id):
     if not os.path.exists(server['path']):
         return jsonify({'error': 'Server file missing from disk'}), 404
 
-    # Kill existing if any
     info = running_processes.get(server_id)
     if info:
         proc = info.get('process')
@@ -896,7 +927,7 @@ def system_info():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-# ── GLOBAL FILE MANAGEMENT (for dashboard stats) ──
+# ── GLOBAL FILE MANAGEMENT ──
 def safe_path(base, rel):
     full = os.path.realpath(os.path.join(base, rel))
     if not full.startswith(os.path.realpath(base)):
@@ -945,10 +976,8 @@ def health_check():
     })
 
 if __name__ == '__main__':
-    # Create templates folder if needed
     os.makedirs("templates", exist_ok=True)
     
-    # Get port from environment (Railway sets PORT automatically)
     port = int(os.environ.get('PORT', 5000))
     
     print('\n' + '='*60)
