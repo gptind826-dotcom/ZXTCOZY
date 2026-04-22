@@ -20,7 +20,7 @@ from functools import wraps
 from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.secret_key = 'ZXTCOZY -super-secret-key-change-in-production-2024'
+app.secret_key = os.environ.get('SECRET_KEY', 'ZXTCOZY-super-secret-key-change-in-production-2024')
 app.config['MAX_CONTENT_LENGTH'] = 500 * 1024 * 1024  # 500MB for projects
 
 # ── PATHS ──────────────────────────────────────────────────────────
@@ -33,7 +33,6 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(LOGS_FOLDER, exist_ok=True)
 
 # ── IN-MEMORY STATE ──
-# Track processes by server_id
 running_processes = {}
 servers_db = {}
 
@@ -193,13 +192,12 @@ def upload_script():
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(server_dir)
-            os.remove(zip_path)  # Remove zip after extraction
+            os.remove(zip_path)
             
             # Find main .py file
             main_file = find_main_file(server_dir)
             
             if not main_file:
-                # Create a default test server
                 main_file = "server.py"
                 with open(os.path.join(server_dir, main_file), 'w') as f:
                     f.write('''
@@ -493,7 +491,7 @@ def server_zip_files(server_id):
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
-#  SERVER MANAGEMENT — PTY-BASED (supports interactive input)
+#  SERVER MANAGEMENT — PTY-BASED
 # ══════════════════════════════════════════════════════════════════
 
 def _pty_reader(server_id: str, master_fd: int):
@@ -583,7 +581,6 @@ def start_server(server_id):
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
 
-        # Set working directory to server workspace
         cwd = server['workspace']
         
         process = subprocess.Popen(
@@ -661,7 +658,6 @@ def delete_server(server_id):
     if server_id not in servers_db:
         return jsonify({'error': 'Server not found'}), 404
     
-    # Stop if running
     info = running_processes.pop(server_id, None)
     if info:
         proc = info.get('process')
@@ -672,14 +668,12 @@ def delete_server(server_id):
                 pass
     
     server = servers_db.pop(server_id)
-    # Delete workspace directory
     workspace = server.get('workspace')
     if workspace and os.path.exists(workspace):
         try:
             shutil.rmtree(workspace)
         except Exception as e:
             print(f"Error deleting workspace: {e}")
-    # Delete log file
     log_file = server.get('log_file')
     if log_file and os.path.exists(log_file):
         try:
@@ -692,7 +686,6 @@ def delete_server(server_id):
 @app.route('/api/scripts')
 @login_required
 def get_servers():
-    # Sync status with actual process state
     for sid, server in servers_db.items():
         info = running_processes.get(sid)
         if info:
@@ -795,7 +788,6 @@ def install_requirements_route(server_id):
     
     success, stdout, stderr = install_requirements(workspace)
     
-    # Write to log
     with open(server['log_file'], 'a') as f:
         f.write(f'\n--- Installing Requirements ---\n')
         f.write(stdout or '')
@@ -940,16 +932,30 @@ def list_files_global():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# ── HEALTH CHECK for Railway ──
+@app.route('/health')
+def health_check():
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': str(datetime.now()),
+        'servers': len(servers_db),
+        'running': len(running_processes)
+    })
+
 if __name__ == '__main__':
     # Create templates folder if needed
     os.makedirs("templates", exist_ok=True)
     
+    # Get port from environment (Railway sets PORT automatically)
+    port = int(os.environ.get('PORT', 5000))
+    
     print('\n' + '='*60)
     print('🚀  ZXTCOZY  Server Hosting Platform Started!')
     print('='*60)
-    print(f'   URL      : http://localhost:5000')
+    print(f'   URL      : http://0.0.0.0:{port}')
     print(f'   Password : admin123')
     print(f'   Servers  : {UPLOAD_FOLDER}')
     print(f'   Logs     : {LOGS_FOLDER}')
     print('='*60 + '\n')
-    app.run(debug=False, host='0.0.0.0', port=5000, threaded=True)
+    
+    app.run(debug=False, host='0.0.0.0', port=port, threaded=True)
