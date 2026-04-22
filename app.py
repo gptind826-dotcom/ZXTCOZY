@@ -35,22 +35,30 @@ os.makedirs(LOGS_FOLDER, exist_ok=True)
 # ── RAILWAY PORT ───────────────────────────────────────────────────
 PORT = int(os.environ.get('PORT', 5000))
 
-# ── PYTHON VERSION DETECTION ───────────────────────────────────────
+# ── PYTHON VERSION DETECTION FOR TELEGRAM BOT COMPATIBILITY ────────
 PYTHON_CMD = None
-for version in ['3.11', '3.10', '3.9', '3']:
+# Prefer Python 3.11 or 3.10 for telegram bot compatibility
+for version in ['3.11', '3.10', '3.9']:
     cmd = f'python{version}'
     try:
         result = subprocess.run([cmd, '--version'], capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             PYTHON_CMD = cmd
-            print(f"[Python] Using {cmd}")
+            print(f"[Python] Using {cmd} for bot execution")
             break
     except:
         continue
 
 if not PYTHON_CMD:
-    PYTHON_CMD = sys.executable
-    print(f"[Python] Using default: {PYTHON_CMD}")
+    # Try to find any python3
+    try:
+        result = subprocess.run(['python3', '--version'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            PYTHON_CMD = 'python3'
+            print(f"[Python] Using python3 for bot execution")
+    except:
+        PYTHON_CMD = sys.executable
+        print(f"[Python] Using default: {PYTHON_CMD}")
 
 # ── IN-MEMORY STATE ──
 running_processes: dict = {}
@@ -135,7 +143,7 @@ def console(script_id):
     return render_template('console.html', script_id=script_id)
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT UPLOAD API
+#  SCRIPT UPLOAD API (Supports Telegram Bots)
 # ══════════════════════════════════════════════════════════════════
 
 @app.route('/api/upload-script', methods=['POST'])
@@ -179,6 +187,11 @@ def upload_script():
             if not main_file:
                 shutil.rmtree(script_dir)
                 return jsonify({'error': 'No .py file found in zip'}), 400
+            
+            # Check for requirements.txt and install if found
+            req_file = os.path.join(script_dir, 'requirements.txt')
+            if os.path.exists(req_file):
+                print(f"[Bot] Found requirements.txt in {script_id}")
             
             project_name = filename.replace('.zip', '')
             script_name = f"{project_name}/{os.path.basename(main_file)}"
@@ -418,7 +431,30 @@ def script_zip_files(script_id):
         return jsonify({'error': str(e)}), 500
 
 # ══════════════════════════════════════════════════════════════════
-#  SCRIPT MANAGEMENT (PTY-BASED)
+#  TELEGRAM BOT SPECIFIC HANDLING
+# ══════════════════════════════════════════════════════════════════
+
+def install_bot_dependencies(workspace):
+    """Install requirements for Telegram bot"""
+    req_file = os.path.join(workspace, 'requirements.txt')
+    if os.path.exists(req_file):
+        try:
+            # Install specific versions that work together
+            subprocess.run([PYTHON_CMD, '-m', 'pip', 'install', '--upgrade', 'pip'], 
+                          capture_output=True, timeout=60)
+            result = subprocess.run(
+                [PYTHON_CMD, '-m', 'pip', 'install', '-r', req_file, '--no-cache-dir', '--prefer-binary'],
+                capture_output=True, text=True, timeout=300, cwd=workspace
+            )
+            print(f"[Bot] Dependencies installed: {result.returncode}")
+            return result.returncode == 0
+        except Exception as e:
+            print(f"[Bot] Dependency install error: {e}")
+            return False
+    return True
+
+# ══════════════════════════════════════════════════════════════════
+#  SCRIPT MANAGEMENT (PTY-BASED FOR TELEGRAM BOTS)
 # ══════════════════════════════════════════════════════════════════
 
 def _pty_reader(script_id: str, master_fd: int):
@@ -489,6 +525,9 @@ def start_script(script_id):
         return jsonify({'error': 'Script file missing from disk'}), 404
 
     _kill_process(script_id)
+    
+    # Install dependencies before starting
+    install_bot_dependencies(script['workspace'])
 
     with open(script['log_file'], 'ab') as f:
         header = f"\n{'='*60}\nStarted: {datetime.now()}\nScript: {script['name']}\nPython: {PYTHON_CMD}\n{'='*60}\n\n"
@@ -501,6 +540,10 @@ def start_script(script_id):
         winsize = struct.pack('HHHH', 24, 80, 0, 0)
         fcntl.ioctl(slave_fd, termios.TIOCSWINSZ, winsize)
 
+        # Set environment variables for Telegram bot
+        env = os.environ.copy()
+        env['PYTHONUNBUFFERED'] = '1'
+        
         process = subprocess.Popen(
             [PYTHON_CMD, '-u', script['path']],
             stdin=slave_fd,
@@ -508,7 +551,8 @@ def start_script(script_id):
             stderr=slave_fd,
             cwd=os.path.dirname(script['path']),
             close_fds=True,
-            start_new_session=True
+            start_new_session=True,
+            env=env
         )
         os.close(slave_fd)
 
@@ -663,7 +707,7 @@ def stream_logs(script_id):
     return Response(generate(), mimetype='text/event-stream',
                     headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
-# ── STDIN ──
+# ── STDIN FOR TELEGRAM BOT INTERACTION ──
 @app.route('/api/stdin/<script_id>', methods=['POST'])
 @login_required
 def send_stdin(script_id):
